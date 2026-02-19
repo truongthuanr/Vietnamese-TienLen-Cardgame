@@ -15,6 +15,30 @@
 ## Redis
 - Store room state and support pub/sub when running multiple backend instances.
 
+## Data Model / Schema
+### Core types
+- Card: `{ rank: 3..15, suit: "S|C|D|H" }` where J=11, Q=12, K=13, A=14, 2=15.
+- Hand: `{ cards: Card[] }`
+- Player: `{ id, name, seat, is_host, is_ready, hand_count, status }`
+
+### Room
+- Room: `{ id, code, password_hash?, max_players, status, host_id, players, created_at }`
+- Room status: `waiting | ready | in_game | finished`
+
+### Game state
+- GameState: `{ room_id, deck, players_order, current_turn, last_play, pass_count, winner_id? }`
+- LastPlay (current trick): `{ type, cards, by_player_id }`
+- Move: `{ type: "play|pass", cards?, by_player_id, ts }`
+
+### Combination type
+- ComboType: `single | pair | triple | straight | consecutive_pairs | four_kind`
+
+### Redis keys (example)
+- `room:{code}` -> Room (JSON)
+- `game:{room_id}` -> GameState (JSON)
+- `room:{code}:players` -> list/set of player ids
+- `pubsub:room:{code}` -> WS broadcast channel
+
 ## Main Flow
 - Create room → generate code → store room state.
 - Join room → validate code/pw → add player → broadcast roster.
