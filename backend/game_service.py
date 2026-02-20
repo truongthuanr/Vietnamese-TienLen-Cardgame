@@ -4,7 +4,7 @@ from datetime import datetime
 from typing import Dict, List, Optional
 from uuid import UUID
 
-from .redis_store import get_redis, room_hands_key, room_state_key
+from .redis_store import ROOM_TTL_SECONDS, get_redis, room_hands_key, room_state_key
 from .room_service import get_players, get_room, update_player
 from .rules import validate_move
 from .schemas import Card, GameState, GameStatus, Move, Suit
@@ -78,6 +78,8 @@ async def start_game(code: str) -> GameState:
     pipeline.set(room_state_key(code), json.dumps(state.model_dump(mode="json")))
     for player_id, cards in hands.items():
         pipeline.hset(room_hands_key(code), str(player_id), _serialize_cards(cards))
+    pipeline.expire(room_state_key(code), ROOM_TTL_SECONDS)
+    pipeline.expire(room_hands_key(code), ROOM_TTL_SECONDS)
     await pipeline.execute()
 
     for player in players:
@@ -121,7 +123,7 @@ async def play_turn(code: str, player_id: UUID, cards_payload: List[dict]) -> Ga
         state.status = GameStatus.finished
         state.winner_id = player_id
     state.current_turn = _next_player(state.players_order, player_id)
-    await client.set(room_state_key(code), json.dumps(state.model_dump(mode="json")))
+    await client.set(room_state_key(code), json.dumps(state.model_dump(mode="json")), ex=ROOM_TTL_SECONDS)
 
     await _sync_hand_count(code, player_id, len(remaining_hand))
     return state
@@ -148,7 +150,7 @@ async def pass_turn(code: str, player_id: UUID) -> GameState:
     else:
         state.current_turn = _next_player(state.players_order, player_id)
 
-    await client.set(room_state_key(code), json.dumps(state.model_dump(mode="json")))
+    await client.set(room_state_key(code), json.dumps(state.model_dump(mode="json")), ex=ROOM_TTL_SECONDS)
     return state
 
 

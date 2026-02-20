@@ -21,6 +21,13 @@
 - WS handler validates actions (join/play/pass/start), updates state via services, then calls `broadcast`.
 - If multi-instance: publish event to Redis pub/sub; each instance subscribes and broadcasts locally.
 
+## User + Room TTL (lightweight sessions)
+- No JWT/auth for MVP; client stores `user_id` + `name` in browser storage.
+- User store: `user:{id}` -> JSON `{id, name, created_at, last_joined_at}` with TTL 7 days.
+- Room store: `room:{code}:*` keys with TTL 24 hours.
+- On join room, update `last_joined_at` and extend user TTL.
+- If room/user expired, client must re-create user or re-join room.
+
 ## Data Model / Schema
 ### Core types
 - Card: `{ rank: 3..15, suit: "S|C|D|H" }` where J=11, Q=12, K=13, A=14, 2=15.

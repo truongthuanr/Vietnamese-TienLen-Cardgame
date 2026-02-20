@@ -11,22 +11,24 @@ from starlette.responses import JSONResponse
 
 from .redis_store import (
     ROOMS_ACTIVE_KEY,
+    ROOM_TTL_SECONDS,
     get_redis,
     room_meta_key,
     room_players_key,
     room_state_key,
 )
 from .schemas import Player, Room, RoomStatus
+from .user_service import get_user, touch_user_on_join
 
 
 class CreateRoomRequest(BaseModel):
-    host_name: str = Field(min_length=1)
+    user_id: UUID
     max_players: int = Field(default=4, ge=2, le=4)
     password: Optional[str] = Field(default=None, min_length=1)
 
 
 class JoinRoomRequest(BaseModel):
-    name: str = Field(min_length=1)
+    user_id: UUID
     password: Optional[str] = Field(default=None, min_length=1)
 
 
@@ -72,10 +74,14 @@ async def create_room(request: Request):
     while await client.exists(room_meta_key(code)):
         code = _generate_room_code()
 
+    user = await get_user(str(payload.user_id))
+    if user is None:
+        return JSONResponse({"error": "User not found"}, status_code=404)
+
     host_id = uuid4()
     host = Player(
         id=host_id,
-        name=payload.host_name,
+        name=user.name,
         seat=0,
         is_host=True,
         is_ready=False,
@@ -100,8 +106,11 @@ async def create_room(request: Request):
     pipeline.set(room_meta_key(code), json.dumps(room_meta))
     pipeline.hset(room_players_key(code), str(host_id), _serialize_model(host))
     pipeline.sadd(ROOMS_ACTIVE_KEY, code)
+    pipeline.expire(room_meta_key(code), ROOM_TTL_SECONDS)
+    pipeline.expire(room_players_key(code), ROOM_TTL_SECONDS)
     await pipeline.execute()
 
+    await touch_user_on_join(str(payload.user_id))
     return JSONResponse({"room": _room_payload(room), "player_id": str(host_id)})
 
 
@@ -116,6 +125,10 @@ async def join_room(request: Request):
         payload = JoinRoomRequest.model_validate(await request.json())
     except ValidationError as exc:
         return JSONResponse({"error": exc.errors()}, status_code=400)
+
+    user = await get_user(str(payload.user_id))
+    if user is None:
+        return JSONResponse({"error": "User not found"}, status_code=404)
 
     meta = json.loads(meta_raw)
     password_hash = meta.get("password_hash")
@@ -136,7 +149,7 @@ async def join_room(request: Request):
     player_id = uuid4()
     player = Player(
         id=player_id,
-        name=payload.name,
+        name=user.name,
         seat=seat,
         is_host=False,
         is_ready=False,
@@ -144,8 +157,11 @@ async def join_room(request: Request):
         status="active",
     )
     await client.hset(room_players_key(code), str(player_id), _serialize_model(player))
+    await client.expire(room_meta_key(code), ROOM_TTL_SECONDS)
+    await client.expire(room_players_key(code), ROOM_TTL_SECONDS)
 
     room = _deserialize_room(meta_raw, players + [player])
+    await touch_user_on_join(str(payload.user_id))
     return JSONResponse({"room": _room_payload(room), "player_id": str(player_id)})
 
 
