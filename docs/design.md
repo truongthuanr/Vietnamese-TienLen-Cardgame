@@ -34,9 +34,10 @@
 - ComboType: `single | pair | triple | straight | consecutive_pairs | four_kind`
 
 ### Redis keys (example)
-- `room:{code}` -> Room (JSON)
-- `game:{room_id}` -> GameState (JSON)
-- `room:{code}:players` -> list/set of player ids
+- `room:{code}:meta` -> Room meta (JSON)
+- `room:{code}:players` -> hash of `player_id` -> Player (JSON)
+- `room:{code}:state` -> GameState (JSON)
+- `rooms:active` -> set of active room codes
 - `pubsub:room:{code}` -> WS broadcast channel
 
 ## Main Flow
