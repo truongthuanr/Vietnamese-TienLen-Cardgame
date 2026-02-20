@@ -15,6 +15,12 @@
 ## Redis
 - Store room state and support pub/sub when running multiple backend instances.
 
+## RoomHub (WebSocket connection manager)
+- Keep mapping `room_code -> set(websocket)` for active connections.
+- API: `connect(ws, room_code)`, `disconnect(ws, room_code)`, `broadcast(room_code, event)`.
+- WS handler validates actions (join/play/pass/start), updates state via services, then calls `broadcast`.
+- If multi-instance: publish event to Redis pub/sub; each instance subscribes and broadcasts locally.
+
 ## Data Model / Schema
 ### Core types
 - Card: `{ rank: 3..15, suit: "S|C|D|H" }` where J=11, Q=12, K=13, A=14, 2=15.

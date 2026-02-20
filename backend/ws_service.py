@@ -1,6 +1,3 @@
-from starlette.applications import Starlette
-from starlette.responses import JSONResponse
-from starlette.routing import Route, WebSocketRoute
 from starlette.websockets import WebSocketDisconnect
 
 from .events import EventType
@@ -8,13 +5,7 @@ from .game_service import get_game_state, pass_turn, play_turn, start_game
 from .room_hub import RoomHub
 from .room_service import get_room
 
-from .room_service import create_room, join_room, leave_room
-
 room_hub = RoomHub()
-
-
-async def homepage(request):
-    return JSONResponse({"status": "ok"})
 
 
 async def websocket_endpoint(websocket):
@@ -115,17 +106,6 @@ async def websocket_endpoint(websocket):
         await _send_error(websocket, str(exc))
         if current_room:
             await room_hub.disconnect(websocket, current_room)
-
-
-routes = [
-    Route("/", homepage),
-    Route("/rooms", create_room, methods=["POST"]),
-    Route("/rooms/{code:str}/join", join_room, methods=["POST"]),
-    Route("/rooms/{code:str}/leave", leave_room, methods=["POST"]),
-    WebSocketRoute("/ws", websocket_endpoint),
-]
-
-app = Starlette(routes=routes)
 
 
 def _parse_uuid(value: str):

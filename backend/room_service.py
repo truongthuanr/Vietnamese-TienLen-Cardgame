@@ -1,22 +1,22 @@
 import hashlib
 import json
-import os
 import secrets
 from datetime import datetime
-from typing import Dict, Optional
+from typing import Optional
 from uuid import UUID, uuid4
 
-import redis.asyncio as redis
 from pydantic import BaseModel, Field, ValidationError
 from starlette.requests import Request
 from starlette.responses import JSONResponse
 
+from .redis_store import (
+    ROOMS_ACTIVE_KEY,
+    get_redis,
+    room_meta_key,
+    room_players_key,
+    room_state_key,
+)
 from .schemas import Player, Room, RoomStatus
-
-REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379/0")
-ROOMS_ACTIVE_KEY = "rooms:active"
-
-_redis: Optional[redis.Redis] = None
 
 
 class CreateRoomRequest(BaseModel):
@@ -47,18 +47,6 @@ def _room_payload(room: Room) -> dict:
     return room.model_dump(mode="json", exclude={"password_hash"})
 
 
-def _room_meta_key(code: str) -> str:
-    return f"room:{code}:meta"
-
-
-def _room_players_key(code: str) -> str:
-    return f"room:{code}:players"
-
-
-def _room_state_key(code: str) -> str:
-    return f"room:{code}:state"
-
-
 def _serialize_model(model: BaseModel) -> str:
     return json.dumps(model.model_dump(mode="json"))
 
@@ -73,22 +61,15 @@ def _deserialize_room(meta_raw: str, players: list[Player]) -> Room:
     return Room.model_validate(meta)
 
 
-async def _get_redis() -> redis.Redis:
-    global _redis
-    if _redis is None:
-        _redis = redis.from_url(REDIS_URL, decode_responses=True)
-    return _redis
-
-
 async def create_room(request: Request):
     try:
         payload = CreateRoomRequest.model_validate(await request.json())
     except ValidationError as exc:
         return JSONResponse({"error": exc.errors()}, status_code=400)
 
-    client = await _get_redis()
+    client = await get_redis()
     code = _generate_room_code()
-    while await client.exists(_room_meta_key(code)):
+    while await client.exists(room_meta_key(code)):
         code = _generate_room_code()
 
     host_id = uuid4()
@@ -116,8 +97,8 @@ async def create_room(request: Request):
 
     room_meta = room.model_dump(mode="json", exclude={"players"})
     pipeline = client.pipeline()
-    pipeline.set(_room_meta_key(code), json.dumps(room_meta))
-    pipeline.hset(_room_players_key(code), str(host_id), _serialize_model(host))
+    pipeline.set(room_meta_key(code), json.dumps(room_meta))
+    pipeline.hset(room_players_key(code), str(host_id), _serialize_model(host))
     pipeline.sadd(ROOMS_ACTIVE_KEY, code)
     await pipeline.execute()
 
@@ -126,8 +107,8 @@ async def create_room(request: Request):
 
 async def join_room(request: Request):
     code = request.path_params["code"].upper()
-    client = await _get_redis()
-    meta_raw = await client.get(_room_meta_key(code))
+    client = await get_redis()
+    meta_raw = await client.get(room_meta_key(code))
     if meta_raw is None:
         return JSONResponse({"error": "Room not found"}, status_code=404)
 
@@ -142,7 +123,7 @@ async def join_room(request: Request):
         if not payload.password or _hash_password(payload.password) != password_hash:
             return JSONResponse({"error": "Invalid password"}, status_code=403)
 
-    players_raw = await client.hgetall(_room_players_key(code))
+    players_raw = await client.hgetall(room_players_key(code))
     players = [_deserialize_player(raw) for raw in players_raw.values()]
     if len(players) >= meta["max_players"]:
         return JSONResponse({"error": "Room is full"}, status_code=409)
@@ -162,7 +143,7 @@ async def join_room(request: Request):
         hand_count=0,
         status="active",
     )
-    await client.hset(_room_players_key(code), str(player_id), _serialize_model(player))
+    await client.hset(room_players_key(code), str(player_id), _serialize_model(player))
 
     room = _deserialize_room(meta_raw, players + [player])
     return JSONResponse({"room": _room_payload(room), "player_id": str(player_id)})
@@ -170,8 +151,8 @@ async def join_room(request: Request):
 
 async def leave_room(request: Request):
     code = request.path_params["code"].upper()
-    client = await _get_redis()
-    meta_raw = await client.get(_room_meta_key(code))
+    client = await get_redis()
+    meta_raw = await client.get(room_meta_key(code))
     if meta_raw is None:
         return JSONResponse({"error": "Room not found"}, status_code=404)
 
@@ -180,7 +161,7 @@ async def leave_room(request: Request):
     except ValidationError as exc:
         return JSONResponse({"error": exc.errors()}, status_code=400)
 
-    players_raw = await client.hgetall(_room_players_key(code))
+    players_raw = await client.hgetall(room_players_key(code))
     players = [_deserialize_player(raw) for raw in players_raw.values()]
     player = next((p for p in players if p.id == payload.player_id), None)
     if player is None:
@@ -189,9 +170,9 @@ async def leave_room(request: Request):
     remaining_players = [p for p in players if p.id != payload.player_id]
     if not remaining_players:
         pipeline = client.pipeline()
-        pipeline.delete(_room_meta_key(code))
-        pipeline.delete(_room_players_key(code))
-        pipeline.delete(_room_state_key(code))
+        pipeline.delete(room_meta_key(code))
+        pipeline.delete(room_players_key(code))
+        pipeline.delete(room_state_key(code))
         pipeline.srem(ROOMS_ACTIVE_KEY, code)
         await pipeline.execute()
         return JSONResponse({"room": None})
@@ -202,12 +183,35 @@ async def leave_room(request: Request):
         new_host.is_host = True
         meta["host_id"] = str(new_host.id)
         pipeline = client.pipeline()
-        pipeline.hset(_room_players_key(code), str(new_host.id), _serialize_model(new_host))
-        pipeline.set(_room_meta_key(code), json.dumps(meta))
-        pipeline.hdel(_room_players_key(code), str(payload.player_id))
+        pipeline.hset(room_players_key(code), str(new_host.id), _serialize_model(new_host))
+        pipeline.set(room_meta_key(code), json.dumps(meta))
+        pipeline.hdel(room_players_key(code), str(payload.player_id))
         await pipeline.execute()
     else:
-        await client.hdel(_room_players_key(code), str(payload.player_id))
+        await client.hdel(room_players_key(code), str(payload.player_id))
 
     room = _deserialize_room(json.dumps(meta), remaining_players)
     return JSONResponse({"room": _room_payload(room)})
+
+
+async def get_room(code: str) -> Optional[Room]:
+    code = code.upper()
+    client = await get_redis()
+    meta_raw = await client.get(room_meta_key(code))
+    if meta_raw is None:
+        return None
+    players_raw = await client.hgetall(room_players_key(code))
+    players = [_deserialize_player(raw) for raw in players_raw.values()]
+    return _deserialize_room(meta_raw, players)
+
+
+async def get_players(code: str) -> list[Player]:
+    code = code.upper()
+    client = await get_redis()
+    players_raw = await client.hgetall(room_players_key(code))
+    return [_deserialize_player(raw) for raw in players_raw.values()]
+
+
+async def update_player(code: str, player: Player) -> None:
+    client = await get_redis()
+    await client.hset(room_players_key(code.upper()), str(player.id), _serialize_model(player))
