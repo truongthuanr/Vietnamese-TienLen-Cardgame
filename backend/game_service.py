@@ -4,10 +4,10 @@ from datetime import datetime
 from typing import Dict, List, Optional
 from uuid import UUID
 
-from .redis_store import ROOM_TTL_SECONDS, get_redis, room_hands_key, room_meta_key, room_state_key
-from .room_service import get_players, get_room, update_player
-from .rules import validate_move
-from .schemas import Card, GameState, GameStatus, Move, Suit
+from redis_store import ROOM_TTL_SECONDS, get_redis, room_hands_key, room_meta_key, room_state_key
+from room_service import get_players, get_room, update_player
+from rules import validate_move
+from schemas import Card, GameState, GameStatus, Move, Suit
 
 
 def _serialize_cards(cards: List[Card]) -> str:

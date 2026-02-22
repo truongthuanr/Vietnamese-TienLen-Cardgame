@@ -9,7 +9,7 @@ from pydantic import BaseModel, Field, ValidationError
 from starlette.requests import Request
 from starlette.responses import JSONResponse
 
-from .redis_store import (
+from redis_store import (
     ROOMS_ACTIVE_KEY,
     ROOM_TTL_SECONDS,
     get_redis,
@@ -17,8 +17,8 @@ from .redis_store import (
     room_players_key,
     room_state_key,
 )
-from .schemas import Player, Room, RoomStatus
-from .user_service import get_user, touch_user_on_join
+from schemas import Player, Room, RoomStatus
+from user_service import get_user, touch_user_on_join
 
 
 class CreateRoomRequest(BaseModel):
@@ -64,6 +64,35 @@ def _deserialize_room(meta_raw: str, players: list[Player]) -> Room:
 
 
 async def create_room(request: Request):
+    """
+    ---
+    summary: Create a room
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            type: object
+            required:
+              - user_id
+            properties:
+              user_id:
+                type: string
+                format: uuid
+              max_players:
+                type: integer
+                minimum: 2
+                maximum: 4
+              password:
+                type: string
+    responses:
+      200:
+        description: OK
+      400:
+        description: Validation error
+      404:
+        description: User not found
+    """
     try:
         payload = CreateRoomRequest.model_validate(await request.json())
     except ValidationError as exc:
@@ -115,6 +144,41 @@ async def create_room(request: Request):
 
 
 async def join_room(request: Request):
+    """
+    ---
+    summary: Join a room
+    parameters:
+      - in: path
+        name: code
+        required: true
+        schema:
+          type: string
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            type: object
+            required:
+              - user_id
+            properties:
+              user_id:
+                type: string
+                format: uuid
+              password:
+                type: string
+    responses:
+      200:
+        description: OK
+      400:
+        description: Validation error
+      403:
+        description: Invalid password
+      404:
+        description: Room or user not found
+      409:
+        description: Room is full
+    """
     code = request.path_params["code"].upper()
     client = await get_redis()
     meta_raw = await client.get(room_meta_key(code))
@@ -166,6 +230,35 @@ async def join_room(request: Request):
 
 
 async def leave_room(request: Request):
+    """
+    ---
+    summary: Leave a room
+    parameters:
+      - in: path
+        name: code
+        required: true
+        schema:
+          type: string
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            type: object
+            required:
+              - player_id
+            properties:
+              player_id:
+                type: string
+                format: uuid
+    responses:
+      200:
+        description: OK
+      400:
+        description: Validation error
+      404:
+        description: Room or player not found
+    """
     code = request.path_params["code"].upper()
     client = await get_redis()
     meta_raw = await client.get(room_meta_key(code))

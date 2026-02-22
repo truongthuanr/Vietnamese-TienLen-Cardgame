@@ -1,9 +1,9 @@
 from starlette.websockets import WebSocketDisconnect
 
-from .events import EventType
-from .game_service import get_game_state, pass_turn, play_turn, start_game
-from .room_hub import RoomHub
-from .room_service import get_room, remove_player
+from events import EventType
+from game_service import get_game_state, pass_turn, play_turn, start_game
+from room_hub import RoomHub
+from room_service import get_room, remove_player
 
 room_hub = RoomHub()
 

@@ -2,19 +2,26 @@ from starlette.applications import Starlette
 from starlette.responses import JSONResponse
 from starlette.routing import Route, WebSocketRoute
 
-from .room_service import create_room, join_room, leave_room
-from .user_service import create_user, get_user_handler
-from .ws_service import websocket_endpoint
+from room_service import create_room, join_room, leave_room
+from swagger import openapi, swagger_ui
+from user_service import create_user, get_user_handler
+from ws_service import websocket_endpoint
 
 
 async def homepage(request):
+    """
+    ---
+    summary: Health check
+    responses:
+      200:
+        description: OK
+    """
     return JSONResponse({"status": "ok"})
-
-
-
 
 routes = [
     Route("/", homepage),
+    Route("/openapi.json", openapi),
+    Route("/docs", swagger_ui),
     Route("/users", create_user, methods=["POST"]),
     Route("/users/{user_id:str}", get_user_handler, methods=["GET"]),
     Route("/rooms", create_room, methods=["POST"]),

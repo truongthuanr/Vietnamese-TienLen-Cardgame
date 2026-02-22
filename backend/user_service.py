@@ -7,7 +7,7 @@ from pydantic import BaseModel, Field, ValidationError
 from starlette.requests import Request
 from starlette.responses import JSONResponse
 
-from .redis_store import USER_TTL_SECONDS, get_redis, user_key
+from redis_store import USER_TTL_SECONDS, get_redis, user_key
 
 
 class User(BaseModel):
@@ -22,6 +22,26 @@ class CreateUserRequest(BaseModel):
 
 
 async def create_user(request: Request):
+    """
+    ---
+    summary: Create a user
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            type: object
+            required:
+              - name
+            properties:
+              name:
+                type: string
+    responses:
+      200:
+        description: OK
+      400:
+        description: Validation error
+    """
     try:
         payload = CreateUserRequest.model_validate(await request.json())
     except ValidationError as exc:
@@ -35,6 +55,21 @@ async def create_user(request: Request):
 
 
 async def get_user_handler(request: Request):
+    """
+    ---
+    summary: Get a user by id
+    parameters:
+      - in: path
+        name: user_id
+        required: true
+        schema:
+          type: string
+    responses:
+      200:
+        description: OK
+      404:
+        description: User not found
+    """
     user_id = request.path_params["user_id"]
     user = await get_user(user_id)
     if user is None:
