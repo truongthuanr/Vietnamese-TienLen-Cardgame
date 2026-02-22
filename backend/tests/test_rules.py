@@ -161,6 +161,123 @@ def test_validate_move_play_rejects_invalid():
         validate_move(move, last_play)
 
 
+def test_special_beat_four_kind_beats_single_two():
+    last_play = LastPlay(
+        type=ComboType.single,
+        cards=[make_card(15, Suit.spades)],
+        by_player_id=_uuid(),
+    )
+    move = Move(
+        type="play",
+        cards=[
+            make_card(9, Suit.spades),
+            make_card(9, Suit.clubs),
+            make_card(9, Suit.diamonds),
+            make_card(9, Suit.hearts),
+        ],
+        by_player_id=_uuid(),
+        ts=datetime.utcnow(),
+    )
+    new_last = validate_move(move, last_play)
+    assert new_last is not None
+    assert new_last.type == ComboType.four_kind
+
+
+def test_special_beat_four_kind_beats_pair_two():
+    last_play = LastPlay(
+        type=ComboType.pair,
+        cards=[make_card(15, Suit.spades), make_card(15, Suit.hearts)],
+        by_player_id=_uuid(),
+    )
+    move = Move(
+        type="play",
+        cards=[
+            make_card(6, Suit.spades),
+            make_card(6, Suit.clubs),
+            make_card(6, Suit.diamonds),
+            make_card(6, Suit.hearts),
+        ],
+        by_player_id=_uuid(),
+        ts=datetime.utcnow(),
+    )
+    new_last = validate_move(move, last_play)
+    assert new_last is not None
+    assert new_last.type == ComboType.four_kind
+
+
+def test_special_beat_three_consecutive_pairs_beats_single_two():
+    last_play = LastPlay(
+        type=ComboType.single,
+        cards=[make_card(15, Suit.diamonds)],
+        by_player_id=_uuid(),
+    )
+    move = Move(
+        type="play",
+        cards=[
+            make_card(3, Suit.spades),
+            make_card(3, Suit.clubs),
+            make_card(4, Suit.diamonds),
+            make_card(4, Suit.hearts),
+            make_card(5, Suit.spades),
+            make_card(5, Suit.clubs),
+        ],
+        by_player_id=_uuid(),
+        ts=datetime.utcnow(),
+    )
+    new_last = validate_move(move, last_play)
+    assert new_last is not None
+    assert new_last.type == ComboType.consecutive_pairs
+
+
+def test_special_beat_four_consecutive_pairs_beats_pair_two():
+    last_play = LastPlay(
+        type=ComboType.pair,
+        cards=[make_card(15, Suit.spades), make_card(15, Suit.hearts)],
+        by_player_id=_uuid(),
+    )
+    move = Move(
+        type="play",
+        cards=[
+            make_card(3, Suit.spades),
+            make_card(3, Suit.clubs),
+            make_card(4, Suit.diamonds),
+            make_card(4, Suit.hearts),
+            make_card(5, Suit.spades),
+            make_card(5, Suit.clubs),
+            make_card(6, Suit.diamonds),
+            make_card(6, Suit.hearts),
+        ],
+        by_player_id=_uuid(),
+        ts=datetime.utcnow(),
+    )
+    new_last = validate_move(move, last_play)
+    assert new_last is not None
+    assert new_last.type == ComboType.consecutive_pairs
+
+
+def test_special_beat_three_consecutive_pairs_rejects_pair_two():
+    last_play = LastPlay(
+        type=ComboType.pair,
+        cards=[make_card(15, Suit.spades), make_card(15, Suit.hearts)],
+        by_player_id=_uuid(),
+    )
+    move = Move(
+        type="play",
+        cards=[
+            make_card(3, Suit.spades),
+            make_card(3, Suit.clubs),
+            make_card(4, Suit.diamonds),
+            make_card(4, Suit.hearts),
+            make_card(5, Suit.spades),
+            make_card(5, Suit.clubs),
+        ],
+        by_player_id=_uuid(),
+        ts=datetime.utcnow(),
+    )
+    with pytest.raises(ValueError):
+        validate_move(move, last_play)
+
+
 def test_detect_win():
     assert detect_win(0) is True
     assert detect_win(3) is False

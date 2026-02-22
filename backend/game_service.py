@@ -4,7 +4,7 @@ from datetime import datetime
 from typing import Dict, List, Optional
 from uuid import UUID
 
-from .redis_store import ROOM_TTL_SECONDS, get_redis, room_hands_key, room_state_key
+from .redis_store import ROOM_TTL_SECONDS, get_redis, room_hands_key, room_meta_key, room_state_key
 from .room_service import get_players, get_room, update_player
 from .rules import validate_move
 from .schemas import Card, GameState, GameStatus, Move, Suit
@@ -62,6 +62,7 @@ async def start_game(code: str) -> GameState:
     hands = _deal_hands(players_order, deck)
     current_turn = _find_start_player(hands)
 
+    first_game = room.games_played == 0
     state = GameState(
         room_id=room.id,
         status=GameStatus.playing,
@@ -71,11 +72,18 @@ async def start_game(code: str) -> GameState:
         last_play=None,
         pass_count=0,
         winner_id=None,
+        first_game=first_game,
+        first_turn_required=first_game,
     )
 
     client = await get_redis()
     pipeline = client.pipeline()
     pipeline.set(room_state_key(code), json.dumps(state.model_dump(mode="json")))
+    room.games_played += 1
+    pipeline.set(
+        room_meta_key(code),
+        json.dumps(room.model_dump(mode="json", exclude={"players"})),
+    )
     for player_id, cards in hands.items():
         pipeline.hset(room_hands_key(code), str(player_id), _serialize_cards(cards))
     pipeline.expire(room_state_key(code), ROOM_TTL_SECONDS)
@@ -111,6 +119,11 @@ async def play_turn(code: str, player_id: UUID, cards_payload: List[dict]) -> Ga
     if not _hand_contains(hand_cards, cards):
         raise ValueError("Cards not in hand")
 
+    if state.first_turn_required:
+        has_three_spades = any(card.rank == 3 and card.suit == Suit.spades for card in cards)
+        if not has_three_spades:
+            raise ValueError("First play must include 3 of spades")
+
     move = Move(type="play", cards=cards, by_player_id=player_id, ts=datetime.utcnow())
     last_play = validate_move(move, state.last_play)
 
@@ -119,6 +132,8 @@ async def play_turn(code: str, player_id: UUID, cards_payload: List[dict]) -> Ga
 
     state.last_play = last_play
     state.pass_count = 0
+    if state.first_turn_required:
+        state.first_turn_required = False
     if not remaining_hand:
         state.status = GameStatus.finished
         state.winner_id = player_id

@@ -65,6 +65,7 @@ class Room(BaseModel):
     max_players: int = 4
     players: List[Player] = []
     created_at: datetime
+    games_played: int = 0
 
 
 class LastPlay(BaseModel):
@@ -89,3 +90,5 @@ class GameState(BaseModel):
     last_play: Optional[LastPlay] = None
     pass_count: int = 0
     winner_id: Optional[UUID] = None
+    first_game: bool = False
+    first_turn_required: bool = False

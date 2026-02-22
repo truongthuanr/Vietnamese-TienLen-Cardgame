@@ -87,8 +87,12 @@ def validate_move(move: Move, last_play: Optional[LastPlay]) -> Optional[LastPla
     candidate = evaluate_combo(move.cards)
     if last_play is not None:
         last_combo = evaluate_combo(last_play.cards)
-        if not can_beat(candidate, last_combo):
-            raise ValueError("Move does not beat last play")
+        if candidate.type != last_combo.type:
+            if not _can_special_beat(candidate, last_combo):
+                raise ValueError("Move does not beat last play")
+        else:
+            if not can_beat(candidate, last_combo):
+                raise ValueError("Move does not beat last play")
 
     return LastPlay(type=candidate.type, cards=move.cards, by_player_id=move.by_player_id)
 
@@ -121,3 +125,16 @@ def _is_consecutive_pairs(cards: List[Card], counts: Dict[int, int]) -> bool:
     if 15 in unique_ranks:
         return False
     return all(b - a == 1 for a, b in zip(unique_ranks, unique_ranks[1:]))
+
+
+def _can_special_beat(candidate: Combo, last: Combo) -> bool:
+    is_single_two = last.type == ComboType.single and last.rank == 15
+    is_pair_two = last.type == ComboType.pair and last.rank == 15
+    if candidate.type == ComboType.four_kind:
+        return is_single_two or is_pair_two
+    if candidate.type == ComboType.consecutive_pairs:
+        if candidate.length >= 4:
+            return is_single_two or is_pair_two
+        if candidate.length == 3:
+            return is_single_two
+    return False
