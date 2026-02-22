@@ -15,6 +15,19 @@
 ## Redis
 - Store room state and support pub/sub when running multiple backend instances.
 
+## RoomHub (WebSocket connection manager)
+- Keep mapping `room_code -> set(websocket)` for active connections.
+- API: `connect(ws, room_code)`, `disconnect(ws, room_code)`, `broadcast(room_code, event)`.
+- WS handler validates actions (join/play/pass/start), updates state via services, then calls `broadcast`.
+- If multi-instance: publish event to Redis pub/sub; each instance subscribes and broadcasts locally.
+
+## User + Room TTL (lightweight sessions)
+- No JWT/auth for MVP; client stores `user_id` + `name` in browser storage.
+- User store: `user:{id}` -> JSON `{id, name, created_at, last_joined_at}` with TTL 7 days.
+- Room store: `room:{code}:*` keys with TTL 24 hours.
+- On join room, update `last_joined_at` and extend user TTL.
+- If room/user expired, client must re-create user or re-join room.
+
 ## Data Model / Schema
 ### Core types
 - Card: `{ rank: 3..15, suit: "S|C|D|H" }` where J=11, Q=12, K=13, A=14, 2=15.
@@ -34,9 +47,10 @@
 - ComboType: `single | pair | triple | straight | consecutive_pairs | four_kind`
 
 ### Redis keys (example)
-- `room:{code}` -> Room (JSON)
-- `game:{room_id}` -> GameState (JSON)
-- `room:{code}:players` -> list/set of player ids
+- `room:{code}:meta` -> Room meta (JSON)
+- `room:{code}:players` -> hash of `player_id` -> Player (JSON)
+- `room:{code}:state` -> GameState (JSON)
+- `rooms:active` -> set of active room codes
 - `pubsub:room:{code}` -> WS broadcast channel
 
 ## Main Flow
