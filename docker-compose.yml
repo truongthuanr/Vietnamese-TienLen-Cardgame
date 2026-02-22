@@ -1,5 +1,7 @@
 services:
   frontend:
+    image: tienlen-frontend
+    container_name: tienlen-frontend
     build:
       context: ./frontend
     ports:
@@ -9,6 +11,8 @@ services:
       - /app/node_modules
 
   backend:
+    image: tienlen-backend
+    container_name: tienlen-backend
     build:
       context: ./backend
     ports:
@@ -22,5 +26,6 @@ services:
 
   redis:
     image: redis:7.2-alpine
+    container_name: tienlen-redis
     ports:
       - "6379:6379"

@@ -1,9 +1,9 @@
 from starlette.websockets import WebSocketDisconnect
 
-from .events import EventType
-from .game_service import get_game_state, pass_turn, play_turn, start_game
-from .room_hub import RoomHub
-from .room_service import get_room
+from events import EventType
+from game_service import get_game_state, pass_turn, play_turn, start_game
+from room_hub import RoomHub
+from room_service import get_room, remove_player
 
 room_hub = RoomHub()
 
@@ -11,6 +11,7 @@ room_hub = RoomHub()
 async def websocket_endpoint(websocket):
     await websocket.accept()
     current_room = None
+    current_player = None
     try:
         while True:
             message = await websocket.receive_json()
@@ -32,6 +33,7 @@ async def websocket_endpoint(websocket):
                     continue
                 await room_hub.connect(websocket, code)
                 current_room = code
+                current_player = _parse_uuid(player_id)
                 await room_hub.broadcast(
                     code,
                     {
@@ -44,6 +46,29 @@ async def websocket_endpoint(websocket):
                     await websocket.send_json(
                         {"type": EventType.game_start.value, "payload": {"state": state.model_dump(mode="json")}}
                     )
+                continue
+
+            if event_type == EventType.room_leave.value:
+                code = payload.get("code")
+                player_id = payload.get("player_id")
+                if not code or not player_id:
+                    await _send_error(websocket, "Missing code or player_id")
+                    continue
+                updated_room = await remove_player(code, _parse_uuid(player_id))
+                await room_hub.disconnect(websocket, code)
+                current_room = None
+                current_player = None
+                await room_hub.broadcast(
+                    code,
+                    {
+                        "type": EventType.room_update.value,
+                        "payload": {
+                            "room": updated_room.model_dump(mode="json", exclude={"password_hash"})
+                            if updated_room
+                            else None
+                        },
+                    },
+                )
                 continue
 
             if event_type == EventType.game_start.value:
@@ -101,6 +126,19 @@ async def websocket_endpoint(websocket):
             await _send_error(websocket, "Unknown event type")
     except WebSocketDisconnect:
         if current_room:
+            if current_player:
+                updated_room = await remove_player(current_room, current_player)
+                await room_hub.broadcast(
+                    current_room,
+                    {
+                        "type": EventType.room_update.value,
+                        "payload": {
+                            "room": updated_room.model_dump(mode="json", exclude={"password_hash"})
+                            if updated_room
+                            else None
+                        },
+                    },
+                )
             await room_hub.disconnect(websocket, current_room)
     except Exception as exc:
         await _send_error(websocket, str(exc))
