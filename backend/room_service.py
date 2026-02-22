@@ -210,6 +210,45 @@ async def leave_room(request: Request):
     return JSONResponse({"room": _room_payload(room)})
 
 
+async def remove_player(code: str, player_id: UUID) -> Optional[Room]:
+    code = code.upper()
+    client = await get_redis()
+    meta_raw = await client.get(room_meta_key(code))
+    if meta_raw is None:
+        return None
+
+    players_raw = await client.hgetall(room_players_key(code))
+    players = [_deserialize_player(raw) for raw in players_raw.values()]
+    player = next((p for p in players if p.id == player_id), None)
+    if player is None:
+        return _deserialize_room(meta_raw, players)
+
+    remaining_players = [p for p in players if p.id != player_id]
+    if not remaining_players:
+        pipeline = client.pipeline()
+        pipeline.delete(room_meta_key(code))
+        pipeline.delete(room_players_key(code))
+        pipeline.delete(room_state_key(code))
+        pipeline.srem(ROOMS_ACTIVE_KEY, code)
+        await pipeline.execute()
+        return None
+
+    meta = json.loads(meta_raw)
+    if player.is_host:
+        new_host = sorted(remaining_players, key=lambda p: p.seat)[0]
+        new_host.is_host = True
+        meta["host_id"] = str(new_host.id)
+        pipeline = client.pipeline()
+        pipeline.hset(room_players_key(code), str(new_host.id), _serialize_model(new_host))
+        pipeline.set(room_meta_key(code), json.dumps(meta))
+        pipeline.hdel(room_players_key(code), str(player_id))
+        await pipeline.execute()
+    else:
+        await client.hdel(room_players_key(code), str(player_id))
+
+    return _deserialize_room(json.dumps(meta), remaining_players)
+
+
 async def get_room(code: str) -> Optional[Room]:
     code = code.upper()
     client = await get_redis()
