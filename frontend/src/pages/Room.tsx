@@ -1,4 +1,7 @@
+import { useState } from 'react'
+
 const Room = () => {
+  const [menuOpen, setMenuOpen] = useState(false)
   const players = [
     { id: 'p1', name: 'Player 1', chips: 500, active: false },
     { id: 'p2', name: 'Player 2', chips: 300, active: true },
@@ -20,6 +23,44 @@ const Room = () => {
         <p className="room-title">TIEN LEN</p>
         <p className="room-subtitle">Room 9XK3 • 3/4 players</p>
       </header>
+
+      <button
+        className="room-menu-toggle"
+        type="button"
+        aria-label={menuOpen ? 'Close menu' : 'Open menu'}
+        onClick={() => setMenuOpen((prev) => !prev)}
+      >
+        <span />
+        <span />
+        <span />
+      </button>
+
+      <div className={`room-menu-backdrop${menuOpen ? ' open' : ''}`}>
+        <aside className="room-menu" aria-hidden={!menuOpen}>
+          <div className="room-menu-header">
+            <p>Menu</p>
+            <button
+              className="room-menu-close"
+              type="button"
+              onClick={() => setMenuOpen(false)}
+            >
+              Close
+            </button>
+          </div>
+          <div className="room-menu-section">
+            <p className="room-menu-title">Host</p>
+            <button type="button">Start game</button>
+            <button type="button">Invite players</button>
+            <button type="button">Close room</button>
+          </div>
+          <div className="room-menu-section">
+            <p className="room-menu-title">Player</p>
+            <button type="button">Ready</button>
+            <button type="button">Change name</button>
+            <button type="button">Leave room</button>
+          </div>
+        </aside>
+      </div>
 
       <section className="room-players">
         {players.map((player) => (
