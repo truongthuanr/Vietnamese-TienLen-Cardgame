@@ -2,7 +2,7 @@ import type { FormEvent } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { createUserId, useStoredUser } from '../hooks/useStoredUser'
 
-const HomeCreate = () => {
+const Home = () => {
   const navigate = useNavigate()
   const { user, saveUser } = useStoredUser()
 
@@ -66,4 +66,4 @@ const HomeCreate = () => {
   )
 }
 
-export default HomeCreate
+export default Home

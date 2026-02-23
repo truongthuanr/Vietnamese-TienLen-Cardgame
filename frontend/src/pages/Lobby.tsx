@@ -14,7 +14,7 @@ const Lobby = () => {
   }
 
   if (!user) {
-    return <Navigate to="/create" replace />
+    return <Navigate to="/" replace />
   }
 
   return (

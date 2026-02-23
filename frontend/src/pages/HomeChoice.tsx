@@ -6,7 +6,7 @@ const HomeChoice = () => {
   const { user, clearUser } = useStoredUser()
 
   if (!user) {
-    return <Navigate to="/create" replace />
+    return <Navigate to="/" replace />
   }
 
   return (
@@ -58,7 +58,7 @@ const HomeChoice = () => {
             type="button"
             onClick={() => {
               clearUser()
-              navigate('/create')
+              navigate('/')
             }}
           >
             Tao user
