@@ -255,6 +255,142 @@
   background: rgba(78, 15, 10, 0.9);
 }
 
+.lobby-shell {
+  padding-bottom: 48px;
+}
+
+.lobby-header {
+  position: relative;
+  z-index: 2;
+  text-align: center;
+  margin: 36px 0 24px;
+}
+
+.lobby-title {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: clamp(2.6rem, 8vw, 4.4rem);
+  letter-spacing: 0.16em;
+  color: #f6dd97;
+  text-shadow: 0 6px 0 #6c240a;
+}
+
+.lobby-subtitle {
+  margin: 8px 0 0;
+  color: rgba(248, 230, 196, 0.8);
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  font-size: 0.8rem;
+}
+
+.lobby-panel {
+  position: relative;
+  z-index: 2;
+  width: min(560px, 92vw);
+  margin: 0 auto;
+  padding: 28px 26px 30px;
+  border-radius: 28px;
+  background: linear-gradient(180deg, #8f2b1b, #4e0f0a);
+  border: 3px solid #e3b35a;
+  box-shadow: 0 26px 45px rgba(12, 4, 0, 0.55);
+}
+
+.lobby-panel::before {
+  content: '';
+  position: absolute;
+  inset: 12px;
+  border-radius: 20px;
+  border: 2px solid rgba(246, 210, 120, 0.6);
+  pointer-events: none;
+}
+
+.lobby-section {
+  display: grid;
+  gap: 14px;
+  text-align: center;
+}
+
+.lobby-section h2 {
+  margin: 0 0 6px;
+  font-family: var(--font-display);
+  font-size: clamp(1.3rem, 5vw, 1.8rem);
+  letter-spacing: 0.14em;
+  color: #f6dd97;
+  text-shadow: 0 2px 0 #6c240a;
+}
+
+.lobby-label {
+  display: grid;
+  gap: 8px;
+  font-size: 0.9rem;
+  color: #f2d8a1;
+  text-transform: uppercase;
+  letter-spacing: 0.2em;
+}
+
+.lobby-section input,
+.lobby-section select {
+  border-radius: 999px;
+  border: 2px solid #5f2316;
+  background: linear-gradient(180deg, #52140f, #3a0d0a);
+  color: #f8e6c4;
+  padding: 12px 18px;
+  font-size: 0.95rem;
+  text-align: center;
+  box-shadow: inset 0 4px 8px rgba(10, 2, 0, 0.5);
+}
+
+.lobby-section input::placeholder {
+  color: rgba(248, 230, 196, 0.6);
+}
+
+.lobby-button {
+  margin-top: 6px;
+  border-radius: 999px;
+  padding: 12px 24px;
+  font-size: 1rem;
+  font-weight: 700;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  background: linear-gradient(180deg, #b8442a, #6a1a0d);
+  border: 2px solid #f0c46a;
+  color: #ffe6b3;
+  text-shadow: 0 2px 0 #5f1d0b;
+  cursor: pointer;
+  box-shadow: 0 16px 24px rgba(15, 4, 0, 0.55);
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.lobby-button:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 20px 30px rgba(15, 4, 0, 0.65);
+}
+
+.lobby-divider {
+  position: relative;
+  margin: 18px 0;
+  text-align: center;
+  font-size: 0.75rem;
+  color: rgba(248, 230, 196, 0.75);
+  letter-spacing: 0.3em;
+  text-transform: uppercase;
+}
+
+.lobby-divider::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 50%;
+  border-top: 1px solid rgba(246, 210, 120, 0.35);
+}
+
+.lobby-divider span {
+  position: relative;
+  padding: 0 12px;
+  background: rgba(78, 15, 10, 0.9);
+}
+
 .home-create-panel h2 {
   margin: 0 0 20px;
   font-family: var(--font-display);
