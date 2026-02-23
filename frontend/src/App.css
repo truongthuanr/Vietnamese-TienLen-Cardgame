@@ -54,6 +54,53 @@
   flex-wrap: wrap;
 }
 
+.user-chip {
+  padding: 8px 14px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--color-muted);
+  font-size: 0.85rem;
+}
+
+.home-shell {
+  gap: 28px;
+}
+
+.home-card {
+  display: grid;
+  grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr);
+  gap: 24px;
+  align-items: stretch;
+}
+
+.home-card .panel {
+  height: fit-content;
+}
+
+.home-choice {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 24px;
+}
+
+.home-user {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 16px;
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.home-user-label {
+  margin: 0;
+  color: var(--color-muted);
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.16em;
+}
+
 .hero {
   display: grid;
   grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr);
@@ -263,6 +310,11 @@ input::placeholder {
   }
 
   .lobby-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .home-card,
+  .home-choice {
     grid-template-columns: 1fr;
   }
 }
