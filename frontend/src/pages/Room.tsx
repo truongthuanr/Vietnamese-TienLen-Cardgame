@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import '../styles/room.css'
 
 const Room = () => {
   const [menuOpen, setMenuOpen] = useState(false)
@@ -85,12 +86,18 @@ const Room = () => {
         </div>
         <div className="room-trick">
           <div className="room-card">
-            <span>7</span>
-            <span className="room-card-suit club">&clubs;</span>
+            <span className="room-card-corner">
+              7
+              <span className="room-card-corner-suit">&clubs;</span>
+            </span>
+            <span className="room-card-center-suit club">&clubs;</span>
           </div>
           <div className="room-card">
-            <span>7</span>
-            <span className="room-card-suit heart">&hearts;</span>
+            <span className="room-card-corner">
+              7
+              <span className="room-card-corner-suit">&hearts;</span>
+            </span>
+            <span className="room-card-center-suit heart">&hearts;</span>
           </div>
         </div>
       </section>
@@ -109,8 +116,16 @@ const Room = () => {
               key={`${card.value}-${card.suit}`}
               className={`room-card small ${index === 3 ? 'selected' : ''}`}
             >
-              <span>{card.value}</span>
-              <span className={`room-card-suit ${card.suit}`}>
+              <span className="room-card-corner">
+                {card.value}
+                <span className={`room-card-corner-suit ${card.suit}`}>
+                  {card.suit === 'spade' && <span>&spades;</span>}
+                  {card.suit === 'diamond' && <span>&diams;</span>}
+                  {card.suit === 'heart' && <span>&hearts;</span>}
+                  {card.suit === 'club' && <span>&clubs;</span>}
+                </span>
+              </span>
+              <span className={`room-card-center-suit ${card.suit}`}>
                 {card.suit === 'spade' && <span>&spades;</span>}
                 {card.suit === 'diamond' && <span>&diams;</span>}
                 {card.suit === 'heart' && <span>&hearts;</span>}

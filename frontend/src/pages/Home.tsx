@@ -1,6 +1,7 @@
 import type { FormEvent } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { createUserId, useStoredUser } from '../hooks/useStoredUser'
+import '../styles/home.css'
 
 const Home = () => {
   const navigate = useNavigate()

@@ -1,6 +1,7 @@
 import type { FormEvent } from 'react'
 import { Navigate } from 'react-router-dom'
 import { useStoredUser } from '../hooks/useStoredUser'
+import '../styles/lobby.css'
 
 const Lobby = () => {
     const { user } = useStoredUser()
