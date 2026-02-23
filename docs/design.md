@@ -54,8 +54,11 @@
 - `pubsub:room:{code}` -> WS broadcast channel
 
 ## Main Flow
-- Create room → generate code → store room state.
-- Join room → validate code/pw → add player → broadcast roster.
+- Homepage: if browser has no saved user info (no auth needed), show user creation screen (enter name only; backend generates `user_id`) and store `user_id` + name in browser.
+- Homepage: if user info stored in browser is valid (backend verifies `user_id` not expired), show options: continue with name (go to Lobby) or create user (enter name).
+- Lobby: main actions are Create room or Join room.
+- Create room → generate code → set `host_id` from stored `user_id` → store room state → auto-join room (extend TTL).
+- Join room → validate code/pw → re-verify `user_id` and extend TTL (if invalid, clear user info and redirect to homepage) → add player → broadcast roster.
 - Start game → deal cards → turn loop.
 
 ## Security Basics
