@@ -263,13 +263,14 @@
   top: 8px;
   left: 10px;
   display: grid;
-  gap: 2px;
+  gap: 0px;
+  line-height: 1;
   font-size: 0.9rem;
   font-weight: 700;
 }
 
 .room-card-corner-suit {
-  font-size: 0.7rem;
+  font-size: 0.9rem;
 }
 
 .room-card-corner-suit.heart,
