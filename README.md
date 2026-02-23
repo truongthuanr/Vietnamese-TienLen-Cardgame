@@ -12,5 +12,8 @@ Vietnamese Tien Len Card Game — rules, gameplay, and implementation details.
 
 
 **Lobby**
+
 The lobby lets players create a new room or join an existing one with a room code and optional password.
+
+
 ![Lobby](docs/resources/lobby.png)
