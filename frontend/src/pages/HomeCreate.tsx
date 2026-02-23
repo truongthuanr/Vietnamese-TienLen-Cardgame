@@ -19,44 +19,29 @@ const HomeCreate = () => {
   }
 
   return (
-    <div className="app home-shell">
-      <header className="app-header">
-        <div className="brand">
-          <span className="brand-mark">TL</span>
-          <div>
-            <p className="brand-title">Tien Len</p>
-            <p className="brand-subtitle">Tao user nhanh de vao san</p>
-          </div>
-        </div>
+    <div className="app home-create">
+      <div className="sparkle-field" aria-hidden="true">
+        <span className="sparkle s1" />
+        <span className="sparkle s2" />
+        <span className="sparkle s3" />
+        <span className="sparkle s4" />
+        <span className="sparkle s5" />
+        <span className="sparkle s6" />
+      </div>
+      <header className="home-create-header">
+        <p className="home-create-title">WEBGAME</p>
       </header>
 
-      <section className="home-card">
-        <div className="home-copy">
-          <p className="eyebrow">Bat dau trong 10 giay</p>
-          <h1>
-            Tao user,
-            <span> roi vao san choi.</span>
-          </h1>
-          <p className="hero-copy">
-            Chi can nhap ten. Backend se tao user_id tu dong va luu tren trinh
-            duyet cua ban.
-          </p>
-        </div>
-        <form className="panel" onSubmit={handleCreateUser}>
-          <div className="panel-header">
-            <h2>Tao user</h2>
-            <span className="pill">New</span>
-          </div>
-          <label>
-            Ten nguoi choi
-            <input name="name" placeholder="VD: Khoa, Nhi" required />
+      <section className="home-create-panel">
+        <h2>CREATE USERNAME</h2>
+        <form className="home-create-form" onSubmit={handleCreateUser}>
+          <label className="home-create-label" htmlFor="username">
+            Enter username
           </label>
-          <button className="primary-button" type="submit">
-            Luu ten va vao sanh
+          <input id="username" name="name" placeholder="Enter username" required />
+          <button className="home-create-button" type="submit">
+            PLAY
           </button>
-          <p className="panel-note">
-            Neu da co user, ban co the tiep tuc tu man hinh truoc.
-          </p>
         </form>
       </section>
     </div>
