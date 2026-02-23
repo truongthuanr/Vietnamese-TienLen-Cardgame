@@ -8,6 +8,7 @@ const Room = () => {
     { id: 'p2', name: 'Player 2', chips: 300, active: true },
     { id: 'p3', name: 'Player 3', chips: 240, active: false },
   ]
+  const activePlayer = players.find((player) => player.active) ?? players[0]
 
   return (
     <div className="app room-shell">
@@ -69,21 +70,16 @@ const Room = () => {
             key={player.id}
             className={`room-player${player.active ? ' active' : ''}`}
           >
-            <div className="room-avatar">{player.name.slice(0, 1)}</div>
             <div>
               <p className="room-player-name">{player.name}</p>
               <p className="room-player-chip">{player.chips} coins</p>
             </div>
-            {player.active ? <span className="room-player-pill">Turn</span> : null}
           </article>
         ))}
       </section>
 
       <section className="room-table">
-        <div className="room-table-score">
-          <span className="room-score-chip">500</span>
-          <span className="room-score-chip">300</span>
-        </div>
+
         <div className="room-trick">
           <div className="room-card">
             <span className="room-card-corner">
@@ -134,8 +130,8 @@ const Room = () => {
             </div>
           ))}
         </div>
-        <button className="room-action subtle" type="button">
-          XEP BAI
+        <button className="room-hand-sort" type="button" aria-label="Sort cards">
+          ↻
         </button>
       </section>
 
@@ -146,6 +142,17 @@ const Room = () => {
         <button className="room-action primary" type="button">
           DANH
         </button>
+      </section>
+
+      <section className="room-current">
+        <p className="room-current-label">Current player</p>
+        <div className="room-current-card">
+          <div>
+            <p className="room-player-name">{activePlayer.name}</p>
+            <p className="room-player-chip">{activePlayer.chips} coins</p>
+          </div>
+          <span className="room-current-pill">Your turn</span>
+        </div>
       </section>
     </div>
   )
