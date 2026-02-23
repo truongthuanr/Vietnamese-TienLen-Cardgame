@@ -4,7 +4,7 @@ import { createUserId, useStoredUser } from '../hooks/useStoredUser'
 
 const HomeCreate = () => {
   const navigate = useNavigate()
-  const { saveUser } = useStoredUser()
+  const { user, saveUser } = useStoredUser()
 
   const handleCreateUser = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
@@ -33,6 +33,24 @@ const HomeCreate = () => {
       </header>
 
       <section className="home-create-panel">
+        {user ? (
+          <div className="home-create-saved">
+            <p className="home-create-saved-label">Play as</p>
+            <div className="home-create-saved-row">
+              <strong>{user.name}</strong>
+              <button
+                className="home-create-secondary"
+                type="button"
+                onClick={() => navigate('/lobby')}
+              >
+                Play
+              </button>
+            </div>
+            <div className="home-create-divider">
+              <span>or</span>
+            </div>
+          </div>
+        ) : null}
         <h2>CREATE USERNAME</h2>
         <form className="home-create-form" onSubmit={handleCreateUser}>
           <label className="home-create-label" htmlFor="username">
