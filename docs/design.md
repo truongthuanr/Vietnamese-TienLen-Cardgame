@@ -59,6 +59,7 @@
 - Lobby: main actions are Create room or Join room.
 - Create room → generate code → set `host_id` from stored `user_id` → store room state → auto-join room (extend TTL).
 - Join room → validate code/pw → re-verify `user_id` and extend TTL (if invalid, clear user info and redirect to homepage) → add player → broadcast roster.
+- After create/join: frontend navigates to Room and opens WebSocket → send `room_join` with `{ code, player_id }` to subscribe for realtime updates.
 - Start game → deal cards → turn loop.
 
 ## Security Basics
