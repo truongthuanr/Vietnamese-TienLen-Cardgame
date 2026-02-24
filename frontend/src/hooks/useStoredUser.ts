@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useCallback, useState } from 'react'
 
 export type UserInfo = {
   id: string
@@ -37,15 +37,15 @@ export const createUserId = () => {
 export const useStoredUser = () => {
   const [user, setUser] = useState<UserInfo | null>(() => readStoredUser())
 
-  const saveUser = (next: UserInfo) => {
+  const saveUser = useCallback((next: UserInfo) => {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(next))
     setUser(next)
-  }
+  }, [])
 
-  const clearUser = () => {
+  const clearUser = useCallback(() => {
     localStorage.removeItem(STORAGE_KEY)
     setUser(null)
-  }
+  }, [])
 
   return { user, saveUser, clearUser }
 }

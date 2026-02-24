@@ -115,6 +115,7 @@ async def create_room(request: Request):
         is_host=True,
         is_ready=False,
         hand_count=0,
+        score=0,
         status="active",
     )
 
@@ -218,6 +219,7 @@ async def join_room(request: Request):
         is_host=False,
         is_ready=False,
         hand_count=0,
+        score=0,
         status="active",
     )
     await client.hset(room_players_key(code), str(player_id), _serialize_model(player))
