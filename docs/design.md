@@ -21,6 +21,12 @@
 - WS handler validates actions (join/play/pass/start), updates state via services, then calls `broadcast`.
 - If multi-instance: publish event to Redis pub/sub; each instance subscribes and broadcasts locally.
 
+## Realtime Event Flow
+- Client sends action (HTTP/WS) → service mutates Redis → service calls `room_hub.broadcast(room_code, event)`.
+- RoomHub only emits when explicitly called; Redis changes alone do not trigger WS updates.
+- Broadcast payloads should be minimal and safe (e.g., no other players' hands), include `room_code` and `ts`.
+- Event naming: `room.updated`, `player.joined`, `player.left`, `game.started`, `game.state`, `game.turn`, `game.finished`.
+
 ## User + Room TTL (lightweight sessions)
 - No JWT/auth for MVP; client stores `user_id` + `name` in browser storage.
 - User store: `user:{id}` -> JSON `{id, name, created_at, last_joined_at}` with TTL 7 days.
