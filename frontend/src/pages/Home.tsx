@@ -1,21 +1,87 @@
 import type { FormEvent } from 'react'
+import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { createUserId, useStoredUser } from '../hooks/useStoredUser'
+import { useStoredUser } from '../hooks/useStoredUser'
+import '../styles/home.css'
+
+const getApiBase = () =>
+  import.meta.env.VITE_API_BASE ?? `http://${window.location.hostname}:8000`
 
 const Home = () => {
   const navigate = useNavigate()
-  const { user, saveUser } = useStoredUser()
+  const { user, saveUser, clearUser } = useStoredUser()
+  const [isVerifying, setIsVerifying] = useState(false)
 
-  const handleCreateUser = (event: FormEvent<HTMLFormElement>) => {
+  useEffect(() => {
+    if (!user) {
+      return
+    }
+
+    let canceled = false
+
+    const verifyUser = async () => {
+      setIsVerifying(true)
+      try {
+        const response = await fetch(`${getApiBase()}/users/${user.id}`)
+        if (!response.ok) {
+          if (response.status === 404) {
+            clearUser()
+          } else {
+            console.error('Verify user failed', await response.json())
+          }
+          return
+        }
+        const data = (await response.json()) as { user: { id: string; name: string } }
+        if (canceled) {
+          return
+        }
+        if (data?.user?.id && data?.user?.name) {
+          if (data.user.id !== user.id || data.user.name !== user.name) {
+            saveUser({ id: data.user.id, name: data.user.name })
+          }
+        }
+      } catch (error) {
+        if (!canceled) {
+          console.error('Verify user error', error)
+        }
+      } finally {
+        if (!canceled) {
+          setIsVerifying(false)
+        }
+      }
+    }
+
+    verifyUser()
+
+    return () => {
+      canceled = true
+    }
+  }, [user, clearUser, saveUser])
+
+  const handleCreateUser = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
     const formData = new FormData(event.currentTarget)
     const name = String(formData.get('name') ?? '').trim()
     if (!name) {
       return
     }
-    const nextUser = { id: createUserId(), name }
-    saveUser(nextUser)
-    navigate('/lobby')
+    const apiBase = getApiBase()
+    try {
+      const response = await fetch(`${apiBase}/users`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name }),
+      })
+      if (!response.ok) {
+        console.error('Create user failed', await response.json())
+        return
+      }
+      const data = (await response.json()) as { user: { id: string; name: string } }
+      saveUser({ id: data.user.id, name: data.user.name })
+      navigate('/lobby')
+    } catch (error) {
+      console.error('Create user error', error)
+    }
   }
 
   return (
@@ -33,7 +99,9 @@ const Home = () => {
       </header>
 
       <section className="home-create-panel">
-        {user ? (
+        {user && isVerifying ? (
+          <p className="home-create-saved-label">Checking saved user...</p>
+        ) : user ? (
           <div className="home-create-saved">
             <p className="home-create-saved-label">Play as</p>
             <div className="home-create-saved-row">

@@ -4,6 +4,7 @@ import './App.css'
 import HomeChoice from './pages/HomeChoice'
 import Home from './pages/Home'
 import Lobby from './pages/Lobby'
+import Room from './pages/Room'
 
 function App() {
   const location = useLocation()
@@ -17,6 +18,7 @@ function App() {
       <Route path="/" element={<Home />} />
       <Route path="/home" element={<HomeChoice />} />
       <Route path="/lobby" element={<Lobby />} />
+      <Route path="/room" element={<Room />} />
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
   )

@@ -1,148 +1,122 @@
 import type { FormEvent } from 'react'
-import { Navigate } from 'react-router-dom'
+import { Navigate, useNavigate } from 'react-router-dom'
 import { useStoredUser } from '../hooks/useStoredUser'
+import '../styles/lobby.css'
+
+const ROOM_CODE_KEY = 'tienlen.room_code'
+const ROOM_PLAYER_KEY = 'tienlen.room_player_id'
 
 const Lobby = () => {
-  const { user } = useStoredUser()
+    const { user } = useStoredUser()
+    const navigate = useNavigate()
 
-  const handleCreate = (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault()
-  }
+    const handleCreate = async (event: FormEvent<HTMLFormElement>) => {
+        event.preventDefault()
+        if (!user) {
+            return
+        }
+        const formData = new FormData(event.currentTarget)
+        const maxPlayers = Number(formData.get('max_players') ?? 4)
+        const password = String(formData.get('password') ?? '').trim()
+        const apiBase =
+            import.meta.env.VITE_API_BASE ?? `http://${window.location.hostname}:8000`
 
-  const handleJoin = (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault()
-  }
+        const payload: { user_id: string; max_players: number; password?: string } = {
+            user_id: user.id,
+            max_players: maxPlayers,
+        }
+        if (password) {
+            payload.password = password
+        }
 
-  if (!user) {
-    return <Navigate to="/" replace />
-  }
+        try {
+            const response = await fetch(`${apiBase}/rooms`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload),
+            })
+            if (!response.ok) {
+                console.error('Create room failed', await response.json())
+                return
+            }
+            const data = (await response.json()) as {
+                room: { code: string }
+                player_id: string
+            }
+            sessionStorage.setItem(ROOM_CODE_KEY, data.room.code)
+            sessionStorage.setItem(ROOM_PLAYER_KEY, data.player_id)
+            navigate(`/room?code=${data.room.code}`)
+        } catch (error) {
+            console.error('Create room error', error)
+        }
+    }
 
-  return (
-    <div className="app">
-      <header className="app-header">
-        <div className="brand">
-          <span className="brand-mark">TL</span>
-          <div>
-            <p className="brand-title">Tien Len Lobby</p>
-            <p className="brand-subtitle">Nhanh, nhe, khong can tai khoan</p>
-          </div>
+    const handleJoin = (event: FormEvent<HTMLFormElement>) => {
+        event.preventDefault()
+    }
+
+    if (!user) {
+        return <Navigate to="/" replace />
+    }
+
+    return (
+        <div className="app lobby-shell">
+            <div className="sparkle-field" aria-hidden="true">
+                <span className="sparkle s1" />
+                <span className="sparkle s2" />
+                <span className="sparkle s3" />
+                <span className="sparkle s4" />
+                <span className="sparkle s5" />
+                <span className="sparkle s6" />
+            </div>
+
+            <header className="lobby-header">
+                <p className="lobby-title">LOBBY</p>
+                <p className="lobby-subtitle">Create a room or join with a code</p>
+            </header>
+
+            <section className="lobby-panel">
+
+                <form className="lobby-section" onSubmit={handleJoin}>
+                    <h2>Join room</h2>
+                    <label className="lobby-label">
+                        Room code
+                        <input name="code" placeholder="ABC123" maxLength={8} required />
+                    </label>
+                    <label className="lobby-label">
+                        Password (optional)
+                        <input name="password" placeholder="••••••" type="password" />
+                    </label>
+                    <button className="lobby-button" type="submit">
+                        Join
+                    </button>
+                </form>
+
+                <div className="lobby-divider">
+                    <span>or</span>
+                </div>
+
+                <form className="lobby-section" onSubmit={handleCreate}>
+                    <h2>Create room</h2>
+                    <label className="lobby-label">
+                        Number of players
+                        <select name="max_players" defaultValue="4">
+                            <option value="2">2 players</option>
+                            <option value="3">3 players</option>
+                            <option value="4">4 players</option>
+                        </select>
+                    </label>
+                    <label className="lobby-label">
+                        Room password (optional)
+                        <input name="password" placeholder="Enter room password" type="password" />
+                    </label>
+                    <button className="lobby-button" type="submit">
+                        Create room
+                    </button>
+                </form>
+            </section>
         </div>
-        <div className="header-actions">
-          <div className="user-chip">User: {user.name || 'Guest'}</div>
-          <button className="ghost-button" type="button">
-            How to play
-          </button>
-          <button className="primary-button" type="button">
-            Create room
-          </button>
-        </div>
-      </header>
-
-      <section className="hero">
-        <div>
-          <p className="eyebrow">San choi danh bai truc tuyen</p>
-          <h1>
-            Lap phong nhanh,
-            <span> vao tran chi voi 1 ma phong.</span>
-          </h1>
-          <p className="hero-copy">
-            Chon so nguoi choi, dat mat khau tuy chon, va san sang danh Tien Len
-            voi ban be trong vai giay.
-          </p>
-          <div className="hero-tags">
-            <span>2-4 nguoi</span>
-            <span>Ma phong 6-8 ky tu</span>
-            <span>Trang thai waiting - ready</span>
-          </div>
-        </div>
-        <div className="hero-panel">
-          <div className="stat">
-            <p>Rooms online</p>
-            <strong>24</strong>
-          </div>
-          <div className="stat">
-            <p>Average join</p>
-            <strong>12s</strong>
-          </div>
-          <div className="stat">
-            <p>Latency</p>
-            <strong>Low</strong>
-          </div>
-        </div>
-      </section>
-
-      <section className="lobby-grid">
-        <form className="panel" onSubmit={handleCreate}>
-          <div className="panel-header">
-            <h2>Tao phong moi</h2>
-            <span className="pill">Host</span>
-          </div>
-          <label>
-            Ten nguoi choi
-            <input placeholder="VD: Minh, An, Linh" defaultValue={user.name} required />
-          </label>
-          <label>
-            So luong nguoi choi
-            <select defaultValue="4">
-              <option value="2">2 nguoi</option>
-              <option value="3">3 nguoi</option>
-              <option value="4">4 nguoi</option>
-            </select>
-          </label>
-          <label>
-            Mat khau (tuy chon)
-            <input placeholder="De trong neu khong can" type="password" />
-          </label>
-          <button className="primary-button" type="submit">
-            Tao phong va nhan ma
-          </button>
-          <p className="panel-note">
-            Sau khi tao, ban se la host va co the bat dau van khi du nguoi.
-          </p>
-        </form>
-
-        <form className="panel highlight" onSubmit={handleJoin}>
-          <div className="panel-header">
-            <h2>Tham gia phong</h2>
-            <span className="pill">Join</span>
-          </div>
-          <label>
-            Ten nguoi choi
-            <input placeholder="VD: Huy, Phuong" defaultValue={user.name} required />
-          </label>
-          <label>
-            Ma phong
-            <input placeholder="ABC123" maxLength={8} required />
-          </label>
-          <label>
-            Mat khau phong (neu co)
-            <input placeholder="••••••" type="password" />
-          </label>
-          <button className="primary-button" type="submit">
-            Vao phong ngay
-          </button>
-          <p className="panel-note">
-            Neu phong day, hay tao phong moi hoac thu ma khac.
-          </p>
-        </form>
-
-        <div className="panel info">
-          <h3>Quy trinh nhanh</h3>
-          <ul>
-            <li>Tao phong, nhan ma 6-8 ky tu.</li>
-            <li>Gui ma phong cho ban be.</li>
-            <li>Du 2-4 nguoi, host bat dau van.</li>
-          </ul>
-          <div className="info-footer">
-            <p>Tuong thich mobile va desktop.</p>
-            <button className="ghost-button" type="button">
-              Xem luat co ban
-            </button>
-          </div>
-        </div>
-      </section>
-    </div>
-  )
+    )
 }
 
 export default Lobby

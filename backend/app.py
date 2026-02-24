@@ -1,4 +1,5 @@
 from starlette.applications import Starlette
+from starlette.middleware.cors import CORSMiddleware
 from starlette.responses import JSONResponse
 from starlette.routing import Route, WebSocketRoute
 
@@ -31,3 +32,12 @@ routes = [
 ]
 
 app = Starlette(routes=routes)
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[
+        "http://localhost:5173",
+        "http://127.0.0.1:5173",
+    ],
+    allow_methods=["*"],
+    allow_headers=["*"],
+)

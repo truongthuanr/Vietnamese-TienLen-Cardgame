@@ -1,5 +1,6 @@
 import { Navigate, useNavigate } from 'react-router-dom'
 import { useStoredUser } from '../hooks/useStoredUser'
+import '../styles/home.css'
 
 const HomeChoice = () => {
   const navigate = useNavigate()
