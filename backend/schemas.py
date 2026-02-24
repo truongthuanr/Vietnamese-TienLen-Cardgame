@@ -53,6 +53,7 @@ class Player(BaseModel):
     is_host: bool = False
     is_ready: bool = False
     hand_count: int = 0
+    score: int = 0
     status: str = "active"
 
 

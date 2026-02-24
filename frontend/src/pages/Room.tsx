@@ -5,17 +5,45 @@ import '../styles/room.css'
 const ROOM_CODE_KEY = 'tienlen.room_code'
 const ROOM_PLAYER_KEY = 'tienlen.room_player_id'
 
+type RoomPlayer = {
+  id: string
+  name: string
+  seat: number
+  is_host: boolean
+  is_ready: boolean
+  hand_count: number
+  score: number
+  status: string
+}
+
+type RoomPayload = {
+  id: string
+  code: string
+  host_id: string
+  status: 'waiting' | 'ready' | 'in_game' | 'finished'
+  max_players: number
+  players: RoomPlayer[]
+  created_at: string
+  games_played: number
+}
+
+type GameStatePayload = {
+  room_id: string
+  status: 'waiting' | 'playing' | 'finished'
+  players_order: string[]
+  current_turn: string
+  last_play: unknown
+  pass_count: number
+  winner_id: string | null
+  first_game: boolean
+  first_turn_required: boolean
+}
+
 const Room = () => {
   const location = useLocation()
   const [menuOpen, setMenuOpen] = useState(false)
-  const roomStatus: 'waiting' | 'ready' | 'in_game' | 'finished' = 'waiting'
-  const players = [
-    { id: 'p1', name: 'Player 1', chips: 500, active: false, ready: true },
-    { id: 'p2', name: 'Player 2', chips: 300, active: true, ready: true },
-    { id: 'p3', name: 'Player 3', chips: 240, active: false, ready: false },
-  ]
-  const activePlayer = players.find((player) => player.active) ?? players[0]
-  const isWaiting = roomStatus === 'waiting' || roomStatus === 'ready'
+  const [room, setRoom] = useState<RoomPayload | null>(null)
+  const [gameState, setGameState] = useState<GameStatePayload | null>(null)
   const roomCode = useMemo(() => {
     const params = new URLSearchParams(location.search)
     return params.get('code') ?? sessionStorage.getItem(ROOM_CODE_KEY) ?? ''
@@ -24,6 +52,14 @@ const Room = () => {
     () => sessionStorage.getItem(ROOM_PLAYER_KEY) ?? '',
     [],
   )
+  const players = room?.players ?? []
+  const activePlayer =
+    players.find((player) => player.id === gameState?.current_turn) ?? players[0]
+  const roomStatus = room?.status ?? 'waiting'
+  const gameStatus = gameState?.status
+  const effectiveStatus =
+    gameStatus === 'playing' ? 'in_game' : gameStatus === 'finished' ? 'finished' : roomStatus
+  const isWaiting = effectiveStatus === 'waiting' || effectiveStatus === 'ready'
 
   useEffect(() => {
     if (!roomCode || !playerId) {
@@ -41,10 +77,35 @@ const Room = () => {
           payload: { code: roomCode, player_id: playerId },
         }),
       )
+      socket.send(
+        JSON.stringify({
+          type: 'room:sync',
+          payload: { code: roomCode, player_id: playerId },
+        }),
+      )
     })
 
     socket.addEventListener('message', (event) => {
-      console.log('[ws]', event.data)
+      try {
+        const message = JSON.parse(event.data)
+        switch (message.type) {
+          case 'room:update':
+            setRoom(message.payload?.room ?? null)
+            break
+          case 'game:start':
+          case 'turn:play':
+          case 'turn:pass':
+          case 'game:end':
+            if (message.payload?.state) {
+              setGameState(message.payload.state)
+            }
+            break
+          default:
+            break
+        }
+      } catch (error) {
+        console.error('[ws] invalid message', error)
+      }
     })
 
     socket.addEventListener('error', (event) => {
@@ -69,8 +130,10 @@ const Room = () => {
 
       <header className="room-header">
         <p className="room-title">TIEN LEN</p>
-        <p className="room-subtitle">Room 9XK3 • 3/4 players</p>
-        <span className={`room-status ${roomStatus}`}>{roomStatus}</span>
+        <p className="room-subtitle">
+          Room {room?.code ?? roomCode} • {players.length}/{room?.max_players ?? 4} players
+        </p>
+        <span className={`room-status ${effectiveStatus}`}>{effectiveStatus}</span>
       </header>
 
       <button
@@ -117,7 +180,7 @@ const Room = () => {
             <p className="room-waiting-title">Waiting room</p>
             <div className="room-code">
               <span>Room code</span>
-              <strong>9XK3</strong>
+              <strong>{room?.code ?? roomCode}</strong>
             </div>
             <div className="room-waiting-actions">
               <button type="button">Copy code</button>
@@ -136,10 +199,10 @@ const Room = () => {
               <div key={player.id} className="room-waiting-player">
                 <div>
                   <p className="room-player-name">{player.name}</p>
-                  <p className="room-player-chip">{player.chips} coins</p>
+                  <p className="room-player-chip">{player.score} coins</p>
                 </div>
-                <span className={`room-waiting-pill ${player.ready ? 'ready' : ''}`}>
-                  {player.ready ? 'Ready' : 'Waiting'}
+                <span className={`room-waiting-pill ${player.is_ready ? 'ready' : ''}`}>
+                  {player.is_ready ? 'Ready' : 'Waiting'}
                 </span>
               </div>
             ))}
@@ -151,11 +214,11 @@ const Room = () => {
             {players.map((player) => (
               <article
                 key={player.id}
-                className={`room-player${player.active ? ' active' : ''}`}
+                className={`room-player${player.id === gameState?.current_turn ? ' active' : ''}`}
               >
                 <div>
                   <p className="room-player-name">{player.name}</p>
-                  <p className="room-player-chip">{player.chips} coins</p>
+                  <p className="room-player-chip">{player.score} coins</p>
                 </div>
               </article>
             ))}
@@ -230,10 +293,12 @@ const Room = () => {
             <p className="room-current-label">Current player</p>
             <div className="room-current-card">
               <div>
-                <p className="room-player-name">{activePlayer.name}</p>
-                <p className="room-player-chip">{activePlayer.chips} coins</p>
+                <p className="room-player-name">{activePlayer?.name ?? 'Player'}</p>
+                <p className="room-player-chip">{activePlayer?.score ?? 0} coins</p>
               </div>
-              <span className="room-current-pill">Your turn</span>
+              <span className="room-current-pill">
+                {activePlayer?.id === playerId ? 'Your turn' : 'Current turn'}
+              </span>
             </div>
           </section>
         </>
