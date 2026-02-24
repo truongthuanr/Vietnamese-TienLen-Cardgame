@@ -1,7 +1,12 @@
-import { useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
+import { useLocation } from 'react-router-dom'
 import '../styles/room.css'
 
+const ROOM_CODE_KEY = 'tienlen.room_code'
+const ROOM_PLAYER_KEY = 'tienlen.room_player_id'
+
 const Room = () => {
+  const location = useLocation()
   const [menuOpen, setMenuOpen] = useState(false)
   const roomStatus: 'waiting' | 'ready' | 'in_game' | 'finished' = 'waiting'
   const players = [
@@ -11,6 +16,45 @@ const Room = () => {
   ]
   const activePlayer = players.find((player) => player.active) ?? players[0]
   const isWaiting = roomStatus === 'waiting' || roomStatus === 'ready'
+  const roomCode = useMemo(() => {
+    const params = new URLSearchParams(location.search)
+    return params.get('code') ?? sessionStorage.getItem(ROOM_CODE_KEY) ?? ''
+  }, [location.search])
+  const playerId = useMemo(
+    () => sessionStorage.getItem(ROOM_PLAYER_KEY) ?? '',
+    [],
+  )
+
+  useEffect(() => {
+    if (!roomCode || !playerId) {
+      return
+    }
+    const apiBase =
+      import.meta.env.VITE_API_BASE ?? `http://${window.location.hostname}:8000`
+    const wsUrl = apiBase.replace(/^http/, 'ws') + '/ws'
+    const socket = new WebSocket(wsUrl)
+
+    socket.addEventListener('open', () => {
+      socket.send(
+        JSON.stringify({
+          type: 'room:join',
+          payload: { code: roomCode, player_id: playerId },
+        }),
+      )
+    })
+
+    socket.addEventListener('message', (event) => {
+      console.log('[ws]', event.data)
+    })
+
+    socket.addEventListener('error', (event) => {
+      console.error('[ws] error', event)
+    })
+
+    return () => {
+      socket.close()
+    }
+  }, [roomCode, playerId])
 
   return (
     <div className="app room-shell">
