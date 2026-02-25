@@ -40,6 +40,7 @@
 - Card: `{ rank: 3..15, suit: "S|C|D|H" }` where J=11, Q=12, K=13, A=14, 2=15.
 - Hand: `{ cards: Card[] }`
 - Player: `{ id, name, seat, is_host, is_ready, hand_count, status }`
+- Player: `{ id, user_id, name, seat, is_host, is_ready, hand_count, status }`
 
 ### Room
 - Room: `{ id, code, password_hash?, max_players, status, host_id, host_user_id, players, created_at, games_played }`

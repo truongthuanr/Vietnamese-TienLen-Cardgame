@@ -4,9 +4,11 @@ import '../styles/room.css'
 
 const ROOM_CODE_KEY = 'tienlen.room_code'
 const ROOM_PLAYER_KEY = 'tienlen.room_player_id'
+const USER_STORAGE_KEY = 'tienlen.user'
 
 type RoomPlayer = {
   id: string
+  user_id: string
   name: string
   seat: number
   is_host: boolean
@@ -49,9 +51,8 @@ const Room = () => {
     const params = new URLSearchParams(location.search)
     return params.get('code') ?? sessionStorage.getItem(ROOM_CODE_KEY) ?? ''
   }, [location.search])
-  const playerId = useMemo(
+  const [playerId, setPlayerId] = useState(
     () => sessionStorage.getItem(ROOM_PLAYER_KEY) ?? '',
-    [],
   )
   const players = room?.players ?? []
   const isHost = room?.host_id === playerId
@@ -133,6 +134,57 @@ const Room = () => {
     return () => {
       socket.close()
     }
+  }, [roomCode, playerId, navigate])
+
+  useEffect(() => {
+    if (!roomCode || playerId) {
+      return
+    }
+    const rawUser = localStorage.getItem(USER_STORAGE_KEY)
+    if (!rawUser) {
+      handleMissingRoom()
+      return
+    }
+    let userId = ''
+    try {
+      const parsed = JSON.parse(rawUser) as { id?: string }
+      userId = parsed?.id ?? ''
+    } catch {
+      handleMissingRoom()
+      return
+    }
+    if (!userId) {
+      handleMissingRoom()
+      return
+    }
+    const apiBase =
+      import.meta.env.VITE_API_BASE ?? `http://${window.location.hostname}:8000`
+    const payload = { user_id: userId }
+    const join = async () => {
+      try {
+        const response = await fetch(`${apiBase}/rooms/${roomCode}/join`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        })
+        if (!response.ok) {
+          console.error('Rejoin room failed', await response.json())
+          handleMissingRoom()
+          return
+        }
+        const data = (await response.json()) as {
+          room: { code: string }
+          player_id: string
+        }
+        sessionStorage.setItem(ROOM_CODE_KEY, data.room.code)
+        sessionStorage.setItem(ROOM_PLAYER_KEY, data.player_id)
+        setPlayerId(data.player_id)
+      } catch (error) {
+        console.error('Rejoin room error', error)
+        handleMissingRoom()
+      }
+    }
+    join()
   }, [roomCode, playerId, navigate])
 
   return (

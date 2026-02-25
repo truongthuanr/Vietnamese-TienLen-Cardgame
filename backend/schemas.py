@@ -48,6 +48,7 @@ class Hand(BaseModel):
 
 class Player(BaseModel):
     id: UUID
+    user_id: UUID
     name: str
     seat: int
     is_host: bool = False
