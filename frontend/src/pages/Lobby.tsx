@@ -51,8 +51,47 @@ const Lobby = () => {
         }
     }
 
-    const handleJoin = (event: FormEvent<HTMLFormElement>) => {
+    const handleJoin = async (event: FormEvent<HTMLFormElement>) => {
         event.preventDefault()
+        if (!user) {
+            return
+        }
+        const formData = new FormData(event.currentTarget)
+        const code = String(formData.get('code') ?? '').trim().toUpperCase()
+        const password = String(formData.get('password') ?? '').trim()
+        if (!code) {
+            return
+        }
+        const apiBase =
+            import.meta.env.VITE_API_BASE ?? `http://${window.location.hostname}:8000`
+
+        const payload: { user_id: string; password?: string } = {
+            user_id: user.id,
+        }
+        if (password) {
+            payload.password = password
+        }
+
+        try {
+            const response = await fetch(`${apiBase}/rooms/${code}/join`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload),
+            })
+            if (!response.ok) {
+                console.error('Join room failed', await response.json())
+                return
+            }
+            const data = (await response.json()) as {
+                room: { code: string }
+                player_id: string
+            }
+            sessionStorage.setItem(ROOM_CODE_KEY, data.room.code)
+            sessionStorage.setItem(ROOM_PLAYER_KEY, data.player_id)
+            navigate(`/room?code=${data.room.code}`)
+        } catch (error) {
+            console.error('Join room error', error)
+        }
     }
 
     if (!user) {

@@ -13,6 +13,7 @@ from redis_store import (
     ROOMS_ACTIVE_KEY,
     ROOM_TTL_SECONDS,
     get_redis,
+    room_hands_key,
     room_meta_key,
     room_players_key,
     room_state_key,
@@ -110,6 +111,7 @@ async def create_room(request: Request):
     host_id = uuid4()
     host = Player(
         id=host_id,
+        user_id=payload.user_id,
         name=user.name,
         seat=0,
         is_host=True,
@@ -125,6 +127,7 @@ async def create_room(request: Request):
         code=code,
         password_hash=password_hash,
         host_id=host_id,
+        host_user_id=payload.user_id,
         status=RoomStatus.waiting,
         max_players=payload.max_players,
         players=[host],
@@ -203,6 +206,32 @@ async def join_room(request: Request):
 
     players_raw = await client.hgetall(room_players_key(code))
     players = [_deserialize_player(raw) for raw in players_raw.values()]
+    existing_player = next((player for player in players if player.user_id == payload.user_id), None)
+    if existing_player is not None:
+        updated = False
+        if existing_player.name != user.name:
+            existing_player.name = user.name
+            updated = True
+        if existing_player.status != "active":
+            existing_player.status = "active"
+            updated = True
+        if meta.get("host_user_id") and str(meta["host_user_id"]) == str(payload.user_id):
+            if not existing_player.is_host or str(meta.get("host_id")) != str(existing_player.id):
+                existing_player.is_host = True
+                meta["host_id"] = str(existing_player.id)
+                updated = True
+        pipeline = client.pipeline()
+        if updated:
+            pipeline.hset(room_players_key(code), str(existing_player.id), _serialize_model(existing_player))
+            pipeline.set(room_meta_key(code), json.dumps(meta))
+        pipeline.expire(room_meta_key(code), ROOM_TTL_SECONDS)
+        pipeline.expire(room_players_key(code), ROOM_TTL_SECONDS)
+        await pipeline.execute()
+
+        room = _deserialize_room(json.dumps(meta), players)
+        await touch_user_on_join(str(payload.user_id))
+        return JSONResponse({"room": _room_payload(room), "player_id": str(existing_player.id)})
+
     if len(players) >= meta["max_players"]:
         return JSONResponse({"error": "Room is full"}, status_code=409)
 
@@ -212,21 +241,31 @@ async def join_room(request: Request):
         len(players),
     )
     player_id = uuid4()
+    is_host = False
+    meta_host_user_id = meta.get("host_user_id")
+    if meta_host_user_id and str(meta_host_user_id) == str(payload.user_id):
+        is_host = True
+        meta["host_id"] = str(player_id)
+
     player = Player(
         id=player_id,
+        user_id=payload.user_id,
         name=user.name,
         seat=seat,
-        is_host=False,
+        is_host=is_host,
         is_ready=False,
         hand_count=0,
         score=0,
         status="active",
     )
-    await client.hset(room_players_key(code), str(player_id), _serialize_model(player))
-    await client.expire(room_meta_key(code), ROOM_TTL_SECONDS)
-    await client.expire(room_players_key(code), ROOM_TTL_SECONDS)
+    pipeline = client.pipeline()
+    pipeline.hset(room_players_key(code), str(player_id), _serialize_model(player))
+    pipeline.set(room_meta_key(code), json.dumps(meta))
+    pipeline.expire(room_meta_key(code), ROOM_TTL_SECONDS)
+    pipeline.expire(room_players_key(code), ROOM_TTL_SECONDS)
+    await pipeline.execute()
 
-    room = _deserialize_room(meta_raw, players + [player])
+    room = _deserialize_room(json.dumps(meta), players + [player])
     await touch_user_on_join(str(payload.user_id))
     return JSONResponse({"room": _room_payload(room), "player_id": str(player_id)})
 
@@ -280,26 +319,20 @@ async def leave_room(request: Request):
 
     remaining_players = [p for p in players if p.id != payload.player_id]
     if not remaining_players:
+        meta = json.loads(meta_raw)
+        meta["status"] = RoomStatus.waiting.value
         pipeline = client.pipeline()
-        pipeline.delete(room_meta_key(code))
         pipeline.delete(room_players_key(code))
         pipeline.delete(room_state_key(code))
-        pipeline.srem(ROOMS_ACTIVE_KEY, code)
+        pipeline.delete(room_hands_key(code))
+        pipeline.set(room_meta_key(code), json.dumps(meta))
+        pipeline.expire(room_meta_key(code), ROOM_TTL_SECONDS)
         await pipeline.execute()
-        return JSONResponse({"room": None})
+        room = _deserialize_room(json.dumps(meta), [])
+        return JSONResponse({"room": _room_payload(room)})
 
     meta = json.loads(meta_raw)
-    if player.is_host:
-        new_host = sorted(remaining_players, key=lambda p: p.seat)[0]
-        new_host.is_host = True
-        meta["host_id"] = str(new_host.id)
-        pipeline = client.pipeline()
-        pipeline.hset(room_players_key(code), str(new_host.id), _serialize_model(new_host))
-        pipeline.set(room_meta_key(code), json.dumps(meta))
-        pipeline.hdel(room_players_key(code), str(payload.player_id))
-        await pipeline.execute()
-    else:
-        await client.hdel(room_players_key(code), str(payload.player_id))
+    await client.hdel(room_players_key(code), str(payload.player_id))
 
     room = _deserialize_room(json.dumps(meta), remaining_players)
     return JSONResponse({"room": _room_payload(room)})
@@ -320,26 +353,19 @@ async def remove_player(code: str, player_id: UUID) -> Optional[Room]:
 
     remaining_players = [p for p in players if p.id != player_id]
     if not remaining_players:
+        meta = json.loads(meta_raw)
+        meta["status"] = RoomStatus.waiting.value
         pipeline = client.pipeline()
-        pipeline.delete(room_meta_key(code))
         pipeline.delete(room_players_key(code))
         pipeline.delete(room_state_key(code))
-        pipeline.srem(ROOMS_ACTIVE_KEY, code)
+        pipeline.delete(room_hands_key(code))
+        pipeline.set(room_meta_key(code), json.dumps(meta))
+        pipeline.expire(room_meta_key(code), ROOM_TTL_SECONDS)
         await pipeline.execute()
-        return None
+        return _deserialize_room(json.dumps(meta), [])
 
     meta = json.loads(meta_raw)
-    if player.is_host:
-        new_host = sorted(remaining_players, key=lambda p: p.seat)[0]
-        new_host.is_host = True
-        meta["host_id"] = str(new_host.id)
-        pipeline = client.pipeline()
-        pipeline.hset(room_players_key(code), str(new_host.id), _serialize_model(new_host))
-        pipeline.set(room_meta_key(code), json.dumps(meta))
-        pipeline.hdel(room_players_key(code), str(player_id))
-        await pipeline.execute()
-    else:
-        await client.hdel(room_players_key(code), str(player_id))
+    await client.hdel(room_players_key(code), str(player_id))
 
     return _deserialize_room(json.dumps(meta), remaining_players)
 
@@ -365,3 +391,15 @@ async def get_players(code: str) -> list[Player]:
 async def update_player(code: str, player: Player) -> None:
     client = await get_redis()
     await client.hset(room_players_key(code.upper()), str(player.id), _serialize_model(player))
+
+
+async def set_player_status(code: str, player_id: UUID, status: str) -> Optional[Room]:
+    code = code.upper()
+    players = await get_players(code)
+    player = next((p for p in players if p.id == player_id), None)
+    if player is None:
+        return await get_room(code)
+    if player.status != status:
+        player.status = status
+        await update_player(code, player)
+    return await get_room(code)

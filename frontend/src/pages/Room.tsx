@@ -1,12 +1,14 @@
 import { useEffect, useMemo, useState } from 'react'
-import { useLocation } from 'react-router-dom'
+import { useLocation, useNavigate } from 'react-router-dom'
 import '../styles/room.css'
 
 const ROOM_CODE_KEY = 'tienlen.room_code'
 const ROOM_PLAYER_KEY = 'tienlen.room_player_id'
+const USER_STORAGE_KEY = 'tienlen.user'
 
 type RoomPlayer = {
   id: string
+  user_id: string
   name: string
   seat: number
   is_host: boolean
@@ -41,6 +43,7 @@ type GameStatePayload = {
 
 const Room = () => {
   const location = useLocation()
+  const navigate = useNavigate()
   const [menuOpen, setMenuOpen] = useState(false)
   const [room, setRoom] = useState<RoomPayload | null>(null)
   const [gameState, setGameState] = useState<GameStatePayload | null>(null)
@@ -48,11 +51,11 @@ const Room = () => {
     const params = new URLSearchParams(location.search)
     return params.get('code') ?? sessionStorage.getItem(ROOM_CODE_KEY) ?? ''
   }, [location.search])
-  const playerId = useMemo(
+  const [playerId, setPlayerId] = useState(
     () => sessionStorage.getItem(ROOM_PLAYER_KEY) ?? '',
-    [],
   )
   const players = room?.players ?? []
+  const isHost = room?.host_id === playerId
   const activePlayer =
     players.find((player) => player.id === gameState?.current_turn) ?? players[0]
   const roomStatus = room?.status ?? 'waiting'
@@ -60,6 +63,13 @@ const Room = () => {
   const effectiveStatus =
     gameStatus === 'playing' ? 'in_game' : gameStatus === 'finished' ? 'finished' : roomStatus
   const isWaiting = effectiveStatus === 'waiting' || effectiveStatus === 'ready'
+
+  const handleMissingRoom = () => {
+    sessionStorage.removeItem(ROOM_CODE_KEY)
+    sessionStorage.removeItem(ROOM_PLAYER_KEY)
+    window.alert('Room not found.')
+    navigate('/lobby', { replace: true })
+  }
 
   useEffect(() => {
     if (!roomCode || !playerId) {
@@ -90,7 +100,11 @@ const Room = () => {
         const message = JSON.parse(event.data)
         switch (message.type) {
           case 'room:update':
-            setRoom(message.payload?.room ?? null)
+            if (!message.payload?.room) {
+              handleMissingRoom()
+              return
+            }
+            setRoom(message.payload.room)
             break
           case 'game:start':
           case 'turn:play':
@@ -98,6 +112,11 @@ const Room = () => {
           case 'game:end':
             if (message.payload?.state) {
               setGameState(message.payload.state)
+            }
+            break
+          case 'error':
+            if (message.payload?.message === 'Room not found') {
+              handleMissingRoom()
             }
             break
           default:
@@ -115,7 +134,58 @@ const Room = () => {
     return () => {
       socket.close()
     }
-  }, [roomCode, playerId])
+  }, [roomCode, playerId, navigate])
+
+  useEffect(() => {
+    if (!roomCode || playerId) {
+      return
+    }
+    const rawUser = localStorage.getItem(USER_STORAGE_KEY)
+    if (!rawUser) {
+      handleMissingRoom()
+      return
+    }
+    let userId = ''
+    try {
+      const parsed = JSON.parse(rawUser) as { id?: string }
+      userId = parsed?.id ?? ''
+    } catch {
+      handleMissingRoom()
+      return
+    }
+    if (!userId) {
+      handleMissingRoom()
+      return
+    }
+    const apiBase =
+      import.meta.env.VITE_API_BASE ?? `http://${window.location.hostname}:8000`
+    const payload = { user_id: userId }
+    const join = async () => {
+      try {
+        const response = await fetch(`${apiBase}/rooms/${roomCode}/join`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        })
+        if (!response.ok) {
+          console.error('Rejoin room failed', await response.json())
+          handleMissingRoom()
+          return
+        }
+        const data = (await response.json()) as {
+          room: { code: string }
+          player_id: string
+        }
+        sessionStorage.setItem(ROOM_CODE_KEY, data.room.code)
+        sessionStorage.setItem(ROOM_PLAYER_KEY, data.player_id)
+        setPlayerId(data.player_id)
+      } catch (error) {
+        console.error('Rejoin room error', error)
+        handleMissingRoom()
+      }
+    }
+    join()
+  }, [roomCode, playerId, navigate])
 
   return (
     <div className="app room-shell">
@@ -159,15 +229,17 @@ const Room = () => {
               Close
             </button>
           </div>
-          <div className="room-menu-section">
-            <p className="room-menu-title">Host</p>
-            <button type="button">Start game</button>
-            <button type="button">Invite players</button>
-            <button type="button">Close room</button>
-          </div>
+          {isHost ? (
+            <div className="room-menu-section">
+              <p className="room-menu-title">Host</p>
+              <button type="button">Start game</button>
+              <button type="button">Invite players</button>
+              <button type="button">Close room</button>
+            </div>
+          ) : null}
           <div className="room-menu-section">
             <p className="room-menu-title">Player</p>
-            <button type="button">Ready</button>
+            {!isHost ? <button type="button">Ready</button> : null}
             <button type="button">Change name</button>
             <button type="button">Leave room</button>
           </div>
@@ -185,9 +257,15 @@ const Room = () => {
             <div className="room-waiting-actions">
               <button type="button">Copy code</button>
               <button type="button">Invite</button>
-              <button type="button" className="primary">
-                Start game
-              </button>
+              {isHost ? (
+                <button type="button" className="primary">
+                  Start game
+                </button>
+              ) : (
+                <button type="button" className="primary">
+                  Ready
+                </button>
+              )}
             </div>
             <p className="room-waiting-note">
               Waiting for players to join. Host can start when ready.

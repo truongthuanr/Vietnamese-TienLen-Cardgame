@@ -48,6 +48,7 @@ class Hand(BaseModel):
 
 class Player(BaseModel):
     id: UUID
+    user_id: UUID
     name: str
     seat: int
     is_host: bool = False
@@ -62,6 +63,7 @@ class Room(BaseModel):
     code: str
     password_hash: Optional[str] = None
     host_id: UUID
+    host_user_id: UUID
     status: RoomStatus = RoomStatus.waiting
     max_players: int = 4
     players: List[Player] = []

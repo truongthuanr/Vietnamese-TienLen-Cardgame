@@ -33,15 +33,17 @@
 - Room store: `room:{code}:*` keys with TTL 24 hours.
 - On join room, update `last_joined_at` and extend user TTL.
 - If room/user expired, client must re-create user or re-join room.
+- If last player leaves, reset room session state (players/state/hands) but keep room meta until TTL.
 
 ## Data Model / Schema
 ### Core types
 - Card: `{ rank: 3..15, suit: "S|C|D|H" }` where J=11, Q=12, K=13, A=14, 2=15.
 - Hand: `{ cards: Card[] }`
 - Player: `{ id, name, seat, is_host, is_ready, hand_count, status }`
+- Player: `{ id, user_id, name, seat, is_host, is_ready, hand_count, status }`
 
 ### Room
-- Room: `{ id, code, password_hash?, max_players, status, host_id, players, created_at, games_played }`
+- Room: `{ id, code, password_hash?, max_players, status, host_id, host_user_id, players, created_at, games_played }`
 - Room status: `waiting | ready | in_game | finished`
 
 ### Game state
@@ -53,6 +55,8 @@
 - `players`: danh sách người chơi trong phòng (public info), không bao gồm bài trên tay.
 - `hand_count`: số lá còn lại của player, dùng để hiển thị công khai.
 - `score`: điểm hiện tại của player (tính theo ván hoặc theo phòng, tuỳ luật).
+- `host_user_id`: user gốc tạo phòng; chỉ user này mới được start game khi đang ở trong phòng.
+- Host logic: không chuyển host cho người khác; khi host quay lại sẽ cập nhật `host_id` theo player mới.
 - `current_turn`: `player_id` của người đang đến lượt.
 - `last_play`: combo hợp lệ gần nhất trong trick hiện tại, làm mốc so sánh.
 - `pass_count`: số lượt pass liên tiếp trong trick; khi đạt `num_players - 1` thì reset trick.

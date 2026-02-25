@@ -7,7 +7,7 @@ from starlette.websockets import WebSocket, WebSocketDisconnect
 from events import EventType
 from game_service import get_game_state, pass_turn, play_turn, start_game
 from room_hub import RoomHub
-from room_service import get_room, remove_player
+from room_service import get_room, remove_player, set_player_status
 
 room_hub = RoomHub()
 
@@ -181,18 +181,21 @@ async def websocket_endpoint(websocket):
     except WebSocketDisconnect:
         if state.current_room:
             if state.current_player:
-                updated_room = await remove_player(state.current_room, state.current_player)
-                await room_hub.broadcast(
+                updated_room = await set_player_status(
                     state.current_room,
-                    {
-                        "type": EventType.room_update.value,
-                        "payload": {
-                            "room": updated_room.model_dump(mode="json", exclude={"password_hash"})
-                            if updated_room
-                            else None
-                        },
-                    },
+                    state.current_player,
+                    "disconnected",
                 )
+                if updated_room:
+                    await room_hub.broadcast(
+                        state.current_room,
+                        {
+                            "type": EventType.room_update.value,
+                            "payload": {
+                                "room": updated_room.model_dump(mode="json", exclude={"password_hash"})
+                            },
+                        },
+                    )
             await room_hub.disconnect(websocket, state.current_room)
     except Exception as exc:
         await _send_error(websocket, str(exc))
