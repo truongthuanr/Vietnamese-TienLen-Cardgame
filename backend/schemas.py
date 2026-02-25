@@ -62,6 +62,7 @@ class Room(BaseModel):
     code: str
     password_hash: Optional[str] = None
     host_id: UUID
+    host_user_id: UUID
     status: RoomStatus = RoomStatus.waiting
     max_players: int = 4
     players: List[Player] = []
