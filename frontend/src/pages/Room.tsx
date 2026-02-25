@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { useLocation } from 'react-router-dom'
+import { useLocation, useNavigate } from 'react-router-dom'
 import '../styles/room.css'
 
 const ROOM_CODE_KEY = 'tienlen.room_code'
@@ -41,6 +41,7 @@ type GameStatePayload = {
 
 const Room = () => {
   const location = useLocation()
+  const navigate = useNavigate()
   const [menuOpen, setMenuOpen] = useState(false)
   const [room, setRoom] = useState<RoomPayload | null>(null)
   const [gameState, setGameState] = useState<GameStatePayload | null>(null)
@@ -53,6 +54,7 @@ const Room = () => {
     [],
   )
   const players = room?.players ?? []
+  const isHost = room?.host_id === playerId
   const activePlayer =
     players.find((player) => player.id === gameState?.current_turn) ?? players[0]
   const roomStatus = room?.status ?? 'waiting'
@@ -60,6 +62,13 @@ const Room = () => {
   const effectiveStatus =
     gameStatus === 'playing' ? 'in_game' : gameStatus === 'finished' ? 'finished' : roomStatus
   const isWaiting = effectiveStatus === 'waiting' || effectiveStatus === 'ready'
+
+  const handleMissingRoom = () => {
+    sessionStorage.removeItem(ROOM_CODE_KEY)
+    sessionStorage.removeItem(ROOM_PLAYER_KEY)
+    window.alert('Room not found.')
+    navigate('/lobby', { replace: true })
+  }
 
   useEffect(() => {
     if (!roomCode || !playerId) {
@@ -90,7 +99,11 @@ const Room = () => {
         const message = JSON.parse(event.data)
         switch (message.type) {
           case 'room:update':
-            setRoom(message.payload?.room ?? null)
+            if (!message.payload?.room) {
+              handleMissingRoom()
+              return
+            }
+            setRoom(message.payload.room)
             break
           case 'game:start':
           case 'turn:play':
@@ -98,6 +111,11 @@ const Room = () => {
           case 'game:end':
             if (message.payload?.state) {
               setGameState(message.payload.state)
+            }
+            break
+          case 'error':
+            if (message.payload?.message === 'Room not found') {
+              handleMissingRoom()
             }
             break
           default:
@@ -115,7 +133,7 @@ const Room = () => {
     return () => {
       socket.close()
     }
-  }, [roomCode, playerId])
+  }, [roomCode, playerId, navigate])
 
   return (
     <div className="app room-shell">
@@ -159,15 +177,17 @@ const Room = () => {
               Close
             </button>
           </div>
-          <div className="room-menu-section">
-            <p className="room-menu-title">Host</p>
-            <button type="button">Start game</button>
-            <button type="button">Invite players</button>
-            <button type="button">Close room</button>
-          </div>
+          {isHost ? (
+            <div className="room-menu-section">
+              <p className="room-menu-title">Host</p>
+              <button type="button">Start game</button>
+              <button type="button">Invite players</button>
+              <button type="button">Close room</button>
+            </div>
+          ) : null}
           <div className="room-menu-section">
             <p className="room-menu-title">Player</p>
-            <button type="button">Ready</button>
+            {!isHost ? <button type="button">Ready</button> : null}
             <button type="button">Change name</button>
             <button type="button">Leave room</button>
           </div>
@@ -185,9 +205,15 @@ const Room = () => {
             <div className="room-waiting-actions">
               <button type="button">Copy code</button>
               <button type="button">Invite</button>
-              <button type="button" className="primary">
-                Start game
-              </button>
+              {isHost ? (
+                <button type="button" className="primary">
+                  Start game
+                </button>
+              ) : (
+                <button type="button" className="primary">
+                  Ready
+                </button>
+              )}
             </div>
             <p className="room-waiting-note">
               Waiting for players to join. Host can start when ready.
