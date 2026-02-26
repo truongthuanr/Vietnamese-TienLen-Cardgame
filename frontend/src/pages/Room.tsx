@@ -57,6 +57,7 @@ const Room = () => {
   )
   const players = room?.players ?? []
   const isHost = room?.host_id === playerId
+  const currentPlayer = players.find((player) => player.id === playerId)
   const activePlayer =
     players.find((player) => player.id === gameState?.current_turn) ?? players[0]
   const roomStatus = room?.status ?? 'waiting'
@@ -246,7 +247,7 @@ const Room = () => {
             <div className="room-menu-section">
               <p className="room-menu-title">Host</p>
               <button type="button">Start game</button>
-              <button type="button">Invite players</button>
+
               <button type="button">Close room</button>
             </div>
           ) : null}
@@ -259,7 +260,9 @@ const Room = () => {
         </aside>
       </div>
 
-      // Waiting screen
+      {/* ================================
+      Waiting screen 
+      ===================================*/}
       {isWaiting ? (
         <section className="room-waiting">
           <div className="room-waiting-card">
@@ -270,7 +273,7 @@ const Room = () => {
             </div>
             <div className="room-waiting-actions">
               <button type="button">Copy code</button>
-              <button type="button">Invite</button>
+
               {isHost ? (
                 <button type="button" className="primary">
                   Start game
@@ -278,7 +281,8 @@ const Room = () => {
               ) : (
                 <button
                   type="button"
-                  className="primary"
+                  className={`primary${currentPlayer?.is_ready ? ' ready' : ''}`}
+                  disabled={currentPlayer?.is_ready}
                   onClick={() =>
                     sendRoomEvent('player:ready', {
                       code: roomCode,
@@ -287,7 +291,7 @@ const Room = () => {
                     })
                   }
                 >
-                  Ready
+                  {currentPlayer?.is_ready ? 'Ready ✓' : 'Ready'}
                 </button>
               )}
             </div>

@@ -247,6 +247,15 @@
   border-color: #f5e1a5;
 }
 
+.room-waiting-actions button.primary.ready,
+.room-waiting-actions button.primary:disabled {
+  background: linear-gradient(180deg, #7fc06a, #4f8d3b);
+  color: #14330f;
+  border-color: #b7e4a0;
+  cursor: default;
+  box-shadow: none;
+}
+
 .room-waiting-note {
   margin: 0;
   color: rgba(248, 230, 196, 0.7);
