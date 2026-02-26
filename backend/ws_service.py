@@ -5,7 +5,7 @@ from uuid import UUID
 from starlette.websockets import WebSocket, WebSocketDisconnect
 
 from events import EventType
-from game_service import get_game_state, pass_turn, play_turn, start_game
+from game_service import get_game_state, maybe_start_next_game, pass_turn, play_turn, start_game
 from room_hub import RoomHub
 from room_service import get_room, remove_player, set_player_ready, set_player_status
 
@@ -131,6 +131,7 @@ async def _handle_player_ready(websocket: WebSocket, payload: dict, state: Conne
 async def _handle_game_start(websocket: WebSocket, payload: dict, state: ConnectionState) -> None:
     code = payload.get("code")
     player_id = payload.get("player_id")
+    max_games = payload.get("max_games")
     if not code or not player_id:
         await _send_error(websocket, "Missing code or player_id")
         return
@@ -141,7 +142,18 @@ async def _handle_game_start(websocket: WebSocket, payload: dict, state: Connect
     if str(room.host_id) != player_id:
         await _send_error(websocket, "Only host can start")
         return
-    room_state = await start_game(code)
+    existing_state = await get_game_state(code)
+    if existing_state and existing_state.status.value == "playing":
+        await _send_error(websocket, "Game already started")
+        return
+    max_games_value = None
+    if max_games is not None:
+        try:
+            max_games_value = int(max_games)
+        except (TypeError, ValueError):
+            await _send_error(websocket, "Invalid max_games")
+            return
+    room_state = await start_game(code, max_games_value)
     await room_hub.broadcast(
         code,
         {"type": EventType.game_start.value, "payload": {"state": room_state.model_dump(mode="json")}},
@@ -161,11 +173,42 @@ async def _handle_turn_play(websocket: WebSocket, payload: dict, state: Connecti
         code,
         {"type": EventType.turn_play.value, "payload": {"state": room_state.model_dump(mode="json")}},
     )
+    updated_room = await get_room(code)
+    await room_hub.broadcast(
+        code,
+        {
+            "type": EventType.room_update.value,
+            "payload": {
+                "room": updated_room.model_dump(mode="json", exclude={"password_hash"})
+                if updated_room
+                else None
+            },
+        },
+    )
     if room_state.status.value == "finished":
         await room_hub.broadcast(
             code,
             {"type": EventType.game_end.value, "payload": {"state": room_state.model_dump(mode="json")}},
         )
+        next_state, series_reset = await maybe_start_next_game(code)
+        if next_state:
+            await room_hub.broadcast(
+                code,
+                {"type": EventType.game_start.value, "payload": {"state": next_state.model_dump(mode="json")}},
+            )
+        elif series_reset:
+            updated_room = await get_room(code)
+            await room_hub.broadcast(
+                code,
+                {
+                    "type": EventType.room_update.value,
+                    "payload": {
+                        "room": updated_room.model_dump(mode="json", exclude={"password_hash"})
+                        if updated_room
+                        else None
+                    },
+                },
+            )
 
 
 @register_event(EventType.turn_pass)

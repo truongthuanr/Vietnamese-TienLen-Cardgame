@@ -1,13 +1,13 @@
 import json
 import random
 from datetime import datetime
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Tuple
 from uuid import UUID
 
 from redis_store import ROOM_TTL_SECONDS, get_redis, room_hands_key, room_meta_key, room_state_key
 from room_service import get_players, get_room, update_player
-from rules import validate_move
-from schemas import Card, GameState, GameStatus, Move, Suit
+from rules import can_beat, evaluate_combo, validate_move
+from schemas import Card, ComboType, GameState, GameStatus, LastPlay, Move, RoomStatus, Suit
 
 
 def _serialize_cards(cards: List[Card]) -> str:
@@ -47,7 +47,7 @@ def _next_player(players: List[UUID], current: UUID) -> UUID:
     return players[(idx + 1) % len(players)]
 
 
-async def start_game(code: str) -> GameState:
+async def start_game(code: str, max_games: Optional[int] = None) -> GameState:
     code = code.upper()
     room = await get_room(code)
     if room is None:
@@ -55,6 +55,10 @@ async def start_game(code: str) -> GameState:
     players = await get_players(code)
     if len(players) < 2:
         raise ValueError("Not enough players to start")
+
+    if max_games is not None and max_games >= 1:
+        room.max_games = max_games
+    room.status = RoomStatus.in_game
 
     players_order = [player.id for player in sorted(players, key=lambda p: p.seat)]
     deck = _create_deck()
@@ -126,6 +130,8 @@ async def play_turn(code: str, player_id: UUID, cards_payload: List[dict]) -> Ga
 
     move = Move(type="play", cards=cards, by_player_id=player_id, ts=datetime.utcnow())
     last_play = validate_move(move, state.last_play)
+    if state.last_play is not None:
+        await _apply_chop_scoring(code, state.last_play, move)
 
     remaining_hand = _remove_cards(hand_cards, cards)
     await client.hset(room_hands_key(code), str(player_id), _serialize_cards(remaining_hand))
@@ -141,7 +147,36 @@ async def play_turn(code: str, player_id: UUID, cards_payload: List[dict]) -> Ga
     await client.set(room_state_key(code), json.dumps(state.model_dump(mode="json")), ex=ROOM_TTL_SECONDS)
 
     await _sync_hand_count(code, player_id, len(remaining_hand))
+    if state.status == GameStatus.finished:
+        await _apply_end_game_scoring(code)
     return state
+
+
+async def maybe_start_next_game(code: str) -> Tuple[Optional[GameState], bool]:
+    code = code.upper()
+    room = await get_room(code)
+    if room is None:
+        return None, False
+    client = await get_redis()
+    raw_state = await client.get(room_state_key(code))
+    if raw_state is None:
+        return None, False
+    state = GameState.model_validate(json.loads(raw_state))
+    if state.status != GameStatus.finished:
+        return None, False
+    if room.games_played >= room.max_games:
+        room.status = RoomStatus.waiting
+        room.games_played = 0
+        await _reset_ready_status(code)
+        pipeline = client.pipeline()
+        pipeline.delete(room_state_key(code))
+        pipeline.delete(room_hands_key(code))
+        pipeline.set(room_meta_key(code), json.dumps(room.model_dump(mode="json", exclude={"players"})))
+        pipeline.expire(room_meta_key(code), ROOM_TTL_SECONDS)
+        await pipeline.execute()
+        return None, True
+    next_state = await start_game(code)
+    return next_state, False
 
 
 async def pass_turn(code: str, player_id: UUID) -> GameState:
@@ -213,3 +248,80 @@ async def _sync_hand_count(code: str, player_id: UUID, count: int) -> None:
             player.hand_count = count
             await update_player(code, player)
             return
+
+
+async def _apply_chop_scoring(code: str, last_play: LastPlay, move: Move) -> None:
+    last_combo = evaluate_combo(last_play.cards)
+    candidate = evaluate_combo(move.cards)
+    delta = 0
+
+    if last_combo.rank == 15 and last_combo.type in {ComboType.single, ComboType.pair}:
+        if candidate.type in {ComboType.four_kind, ComboType.consecutive_pairs}:
+            delta = sum(_two_penalty(card.suit) for card in last_play.cards)
+    elif last_combo.type == ComboType.consecutive_pairs and last_combo.length == 3:
+        if candidate.type == ComboType.consecutive_pairs and candidate.length == 4:
+            delta = 2
+    elif last_combo.type == ComboType.four_kind:
+        if candidate.type == ComboType.consecutive_pairs and candidate.length == 4:
+            delta = 2
+    elif last_combo.type == ComboType.consecutive_pairs and last_combo.length == 4:
+        if candidate.type == ComboType.consecutive_pairs and candidate.length == 4 and can_beat(candidate, last_combo):
+            delta = 4
+
+    if delta > 0:
+        await _apply_score_delta(code, move.by_player_id, last_play.by_player_id, delta)
+
+
+async def _apply_end_game_scoring(code: str) -> None:
+    players = await get_players(code)
+    if not players:
+        return
+    client = await get_redis()
+    hands_raw = await client.hgetall(room_hands_key(code))
+    hand_counts: Dict[UUID, int] = {}
+    for player in players:
+        raw_hand = hands_raw.get(str(player.id))
+        hand_counts[player.id] = len(_deserialize_cards(raw_hand)) if raw_hand else 0
+    seat_map = {player.id: player.seat for player in players}
+    ordered = sorted(players, key=lambda p: (hand_counts.get(p.id, 0), seat_map.get(p.id, 0)))
+
+    if len(players) == 2:
+        score_table = [2, -2]
+    elif len(players) == 3:
+        score_table = [2, 1, -1]
+    else:
+        score_table = [2, 1, -1, -2]
+
+    for index, player in enumerate(ordered[: len(score_table)]):
+        player.score += score_table[index]
+        await update_player(code, player)
+
+
+async def _apply_score_delta(code: str, winner_id: UUID, loser_id: UUID, delta: int) -> None:
+    players = await get_players(code)
+    updated = False
+    for player in players:
+        if player.id == winner_id:
+            player.score += delta
+            await update_player(code, player)
+            updated = True
+        elif player.id == loser_id:
+            player.score -= delta
+            await update_player(code, player)
+            updated = True
+    if not updated:
+        return
+
+
+def _two_penalty(suit: Suit) -> int:
+    if suit in {Suit.spades, Suit.clubs}:
+        return 1
+    return 2
+
+
+async def _reset_ready_status(code: str) -> None:
+    players = await get_players(code)
+    for player in players:
+        if player.is_ready:
+            player.is_ready = False
+            await update_player(code, player)

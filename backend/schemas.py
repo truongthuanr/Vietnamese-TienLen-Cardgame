@@ -66,6 +66,7 @@ class Room(BaseModel):
     host_user_id: UUID
     status: RoomStatus = RoomStatus.waiting
     max_players: int = 4
+    max_games: int = Field(default=12, ge=1)
     players: List[Player] = []
     created_at: datetime
     games_played: int = 0

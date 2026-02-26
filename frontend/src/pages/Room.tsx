@@ -24,6 +24,7 @@ type RoomPayload = {
   host_id: string
   status: 'waiting' | 'ready' | 'in_game' | 'finished'
   max_players: number
+  max_games: number
   players: RoomPlayer[]
   created_at: string
   games_played: number
@@ -48,6 +49,8 @@ const Room = () => {
   const [menuOpen, setMenuOpen] = useState(false)
   const [room, setRoom] = useState<RoomPayload | null>(null)
   const [gameState, setGameState] = useState<GameStatePayload | null>(null)
+  const [maxGames, setMaxGames] = useState(12)
+  const [maxGamesTouched, setMaxGamesTouched] = useState(false)
   const roomCode = useMemo(() => {
     const params = new URLSearchParams(location.search)
     return params.get('code') ?? sessionStorage.getItem(ROOM_CODE_KEY) ?? ''
@@ -117,6 +120,9 @@ const Room = () => {
               return
             }
             setRoom(message.payload.room)
+            if (message.payload.room.status === 'waiting') {
+              setGameState(null)
+            }
             break
           case 'game:start':
           case 'turn:play':
@@ -148,6 +154,12 @@ const Room = () => {
       socket.close()
     }
   }, [roomCode, playerId, navigate])
+
+  useEffect(() => {
+    if (room?.max_games && !maxGamesTouched) {
+      setMaxGames(room.max_games)
+    }
+  }, [room?.max_games, maxGamesTouched])
 
   // Rejoin flow: only when roomCode exists but playerId is missing.
   useEffect(() => {
@@ -252,6 +264,7 @@ const Room = () => {
                   sendRoomEvent('game:start', {
                     code: roomCode,
                     player_id: playerId,
+                    max_games: maxGames,
                   })
                 }
               >
@@ -292,6 +305,7 @@ const Room = () => {
                     sendRoomEvent('game:start', {
                       code: roomCode,
                       player_id: playerId,
+                      max_games: maxGames,
                     })
                   }
                 >
@@ -318,6 +332,24 @@ const Room = () => {
               Waiting for players to join. Host can start when ready.
             </p>
           </div>
+
+          {isHost ? (
+            <div className="room-config">
+              <label>
+                Number of games
+                <input
+                  type="number"
+                  min={1}
+                  max={99}
+                  value={maxGames}
+                  onChange={(event) => {
+                    setMaxGamesTouched(true)
+                    setMaxGames(Number(event.target.value) || 1)
+                  }}
+                />
+              </label>
+            </div>
+          ) : null}
 
           <div className="room-waiting-list">
             {players.map((player) => (

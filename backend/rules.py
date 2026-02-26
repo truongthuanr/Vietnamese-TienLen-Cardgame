@@ -91,7 +91,7 @@ def validate_move(move: Move, last_play: Optional[LastPlay]) -> Optional[LastPla
             if not _can_special_beat(candidate, last_combo):
                 raise ValueError("Move does not beat last play")
         else:
-            if not can_beat(candidate, last_combo):
+            if not can_beat(candidate, last_combo) and not _can_special_upgrade(candidate, last_combo):
                 raise ValueError("Move does not beat last play")
 
     return LastPlay(type=candidate.type, cards=move.cards, by_player_id=move.by_player_id)
@@ -137,4 +137,12 @@ def _can_special_beat(candidate: Combo, last: Combo) -> bool:
             return is_single_two or is_pair_two
         if candidate.length == 3:
             return is_single_two
+        if candidate.length == 4 and last.type == ComboType.four_kind:
+            return True
+    return False
+
+
+def _can_special_upgrade(candidate: Combo, last: Combo) -> bool:
+    if candidate.type == ComboType.consecutive_pairs and last.type == ComboType.consecutive_pairs:
+        return candidate.length == 4 and last.length == 3 and candidate.rank > last.rank
     return False

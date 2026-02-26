@@ -130,6 +130,7 @@ async def create_room(request: Request):
         host_user_id=payload.user_id,
         status=RoomStatus.waiting,
         max_players=payload.max_players,
+        max_games=12,
         players=[host],
         created_at=datetime.utcnow(),
     )

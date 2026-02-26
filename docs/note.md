@@ -26,8 +26,19 @@
 
 ## 6) Gameplay loop
 - Deal cards, manage turns, enforce valid moves.
+- First game: bắt buộc đánh 3♠.
 - Handle pass / reset trick.
-- End game -> results.
+- End game -> rank scoring (+2, +1, -1, -2), update player scores.
+- Special scoring on chops:
+  - Heo đen bị chặt -1, heo đỏ -2 (nhiều heo cộng dồn), người chặt + tương ứng.
+  - Chặt 3 đôi thông -2; tứ quý bị chặt -2; 4 đôi thông bị chặt -4.
+- Multi-game series: host config `number of games` ở waiting screen; auto start next game; hết số ván thì reset về waiting.
+  - Waiting: host set `max_games`; broadcast room update.
+  - Start game: shuffle/deal; set `current_turn` theo 3♠ (game 1), reset `last_play`, `pass_count`.
+  - Play turn: validate lượt + combo; apply chop scoring; update hand + `last_play`; advance turn.
+  - Pass: increment `pass_count`; nếu đủ vòng thì reset trick và trả lượt cho người vừa đánh.
+  - End game: xác định thứ hạng theo số lá còn lại; cộng/trừ điểm; broadcast `game:end`.
+  - Next game: nếu chưa đủ `max_games` thì auto `game:start`; nếu đủ thì clear state/hands và về waiting.
 
 ## 7) Polish & reliability
 - Reconnect handling.
