@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import '../styles/room.css'
 
@@ -44,6 +44,7 @@ type GameStatePayload = {
 const Room = () => {
   const location = useLocation()
   const navigate = useNavigate()
+  const socketRef = useRef<WebSocket | null>(null)
   const [menuOpen, setMenuOpen] = useState(false)
   const [room, setRoom] = useState<RoomPayload | null>(null)
   const [gameState, setGameState] = useState<GameStatePayload | null>(null)
@@ -63,6 +64,14 @@ const Room = () => {
   const effectiveStatus =
     gameStatus === 'playing' ? 'in_game' : gameStatus === 'finished' ? 'finished' : roomStatus
   const isWaiting = effectiveStatus === 'waiting' || effectiveStatus === 'ready'
+  const sendRoomEvent = (type: string, payload: Record<string, unknown>) => {
+    const socket = socketRef.current
+    if (!socket || socket.readyState !== WebSocket.OPEN) {
+      console.warn('[ws] not connected')
+      return
+    }
+    socket.send(JSON.stringify({ type, payload }))
+  }
 
   const handleMissingRoom = () => {
     sessionStorage.removeItem(ROOM_CODE_KEY)
@@ -71,6 +80,7 @@ const Room = () => {
     navigate('/lobby', { replace: true })
   }
 
+  // Start WS sync when we have both roomCode and playerId.
   useEffect(() => {
     if (!roomCode || !playerId) {
       return
@@ -79,6 +89,7 @@ const Room = () => {
       import.meta.env.VITE_API_BASE ?? `http://${window.location.hostname}:8000`
     const wsUrl = apiBase.replace(/^http/, 'ws') + '/ws'
     const socket = new WebSocket(wsUrl)
+    socketRef.current = socket
 
     socket.addEventListener('open', () => {
       socket.send(
@@ -132,10 +143,12 @@ const Room = () => {
     })
 
     return () => {
+      socketRef.current = null
       socket.close()
     }
   }, [roomCode, playerId, navigate])
 
+  // Rejoin flow: only when roomCode exists but playerId is missing.
   useEffect(() => {
     if (!roomCode || playerId) {
       return
@@ -246,6 +259,7 @@ const Room = () => {
         </aside>
       </div>
 
+      // Waiting screen
       {isWaiting ? (
         <section className="room-waiting">
           <div className="room-waiting-card">
@@ -262,7 +276,17 @@ const Room = () => {
                   Start game
                 </button>
               ) : (
-                <button type="button" className="primary">
+                <button
+                  type="button"
+                  className="primary"
+                  onClick={() =>
+                    sendRoomEvent('player:ready', {
+                      code: roomCode,
+                      player_id: playerId,
+                      is_ready: true,
+                    })
+                  }
+                >
                   Ready
                 </button>
               )}
@@ -287,6 +311,7 @@ const Room = () => {
           </div>
         </section>
       ) : (
+        // Gameplay screen
         <>
           <section className="room-players">
             {players.map((player) => (

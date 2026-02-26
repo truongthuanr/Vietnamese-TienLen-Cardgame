@@ -7,7 +7,7 @@ from starlette.websockets import WebSocket, WebSocketDisconnect
 from events import EventType
 from game_service import get_game_state, pass_turn, play_turn, start_game
 from room_hub import RoomHub
-from room_service import get_room, remove_player, set_player_status
+from room_service import get_room, remove_player, set_player_ready, set_player_status
 
 room_hub = RoomHub()
 
@@ -107,6 +107,24 @@ async def _handle_room_sync(websocket: WebSocket, payload: dict, state: Connecti
         await websocket.send_json(
             {"type": EventType.game_start.value, "payload": {"state": room_state.model_dump(mode="json")}}
         )
+
+
+@register_event(EventType.player_ready)
+async def _handle_player_ready(websocket: WebSocket, payload: dict, state: ConnectionState) -> None:
+    code = payload.get("code")
+    player_id = payload.get("player_id")
+    is_ready = payload.get("is_ready", True)
+    if not code or not player_id:
+        await _send_error(websocket, "Missing code or player_id")
+        return
+    room = await set_player_ready(code, _parse_uuid(player_id), bool(is_ready))
+    await room_hub.broadcast(
+        code,
+        {
+            "type": EventType.room_update.value,
+            "payload": {"room": room.model_dump(mode="json", exclude={"password_hash"}) if room else None},
+        },
+    )
 
 
 @register_event(EventType.game_start)
