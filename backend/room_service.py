@@ -403,3 +403,43 @@ async def set_player_status(code: str, player_id: UUID, status: str) -> Optional
         player.status = status
         await update_player(code, player)
     return await get_room(code)
+
+
+async def set_player_ready(code: str, player_id: UUID, is_ready: bool) -> Optional[Room]:
+    code = code.upper()
+    client = await get_redis()
+    meta_raw = await client.get(room_meta_key(code))
+    if meta_raw is None:
+        return None
+    players_raw = await client.hgetall(room_players_key(code))
+    players = [_deserialize_player(raw) for raw in players_raw.values()]
+    player = next((p for p in players if p.id == player_id), None)
+    if player is None:
+        return _deserialize_room(meta_raw, players)
+
+    updated_player = False
+    if player.is_ready != is_ready:
+        player.is_ready = is_ready
+        updated_player = True
+
+    meta = json.loads(meta_raw)
+    status = meta.get("status")
+    status_updated = False
+    if status in {RoomStatus.waiting.value, RoomStatus.ready.value}:
+        all_ready = len(players) >= 2 and all(p.is_ready or p.is_host for p in players)
+        next_status = RoomStatus.ready.value if all_ready else RoomStatus.waiting.value
+        if status != next_status:
+            meta["status"] = next_status
+            status_updated = True
+
+    if updated_player or status_updated:
+        pipeline = client.pipeline()
+        if updated_player:
+            pipeline.hset(room_players_key(code), str(player.id), _serialize_model(player))
+        if status_updated:
+            pipeline.set(room_meta_key(code), json.dumps(meta))
+        pipeline.expire(room_meta_key(code), ROOM_TTL_SECONDS)
+        pipeline.expire(room_players_key(code), ROOM_TTL_SECONDS)
+        await pipeline.execute()
+
+    return _deserialize_room(json.dumps(meta), players)
