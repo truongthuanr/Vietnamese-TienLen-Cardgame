@@ -246,7 +246,17 @@ const Room = () => {
           {isHost ? (
             <div className="room-menu-section">
               <p className="room-menu-title">Host</p>
-              <button type="button">Start game</button>
+              <button
+                type="button"
+                onClick={() =>
+                  sendRoomEvent('game:start', {
+                    code: roomCode,
+                    player_id: playerId,
+                  })
+                }
+              >
+                Start game
+              </button>
 
               <button type="button">Close room</button>
             </div>
@@ -275,7 +285,16 @@ const Room = () => {
               <button type="button">Copy code</button>
 
               {isHost ? (
-                <button type="button" className="primary">
+                <button
+                  type="button"
+                  className="primary"
+                  onClick={() =>
+                    sendRoomEvent('game:start', {
+                      code: roomCode,
+                      player_id: playerId,
+                    })
+                  }
+                >
                   Start game
                 </button>
               ) : (
