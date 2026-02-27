@@ -8,6 +8,7 @@ class EventType(str, Enum):
     room_update = "room:update"
     player_ready = "player:ready"
     game_start = "game:start"
+    hand_deal = "hand:deal"
     turn_play = "turn:play"
     turn_pass = "turn:pass"
     game_end = "game:end"

@@ -24,9 +24,21 @@ type RoomPayload = {
   host_id: string
   status: 'waiting' | 'ready' | 'in_game' | 'finished'
   max_players: number
+  max_games: number
   players: RoomPlayer[]
   created_at: string
   games_played: number
+}
+
+type Card = {
+  rank: number
+  suit: 'S' | 'C' | 'D' | 'H'
+}
+
+type LastPlay = {
+  type: string
+  cards: Card[]
+  by_player_id: string
 }
 
 type GameStatePayload = {
@@ -34,7 +46,7 @@ type GameStatePayload = {
   status: 'waiting' | 'playing' | 'finished'
   players_order: string[]
   current_turn: string
-  last_play: unknown
+  last_play: LastPlay | null
   pass_count: number
   winner_id: string | null
   first_game: boolean
@@ -45,9 +57,13 @@ const Room = () => {
   const location = useLocation()
   const navigate = useNavigate()
   const socketRef = useRef<WebSocket | null>(null)
+  const dealTimersRef = useRef<number[]>([])
   const [menuOpen, setMenuOpen] = useState(false)
   const [room, setRoom] = useState<RoomPayload | null>(null)
   const [gameState, setGameState] = useState<GameStatePayload | null>(null)
+  const [maxGames, setMaxGames] = useState(12)
+  const [maxGamesTouched, setMaxGamesTouched] = useState(false)
+  const [hand, setHand] = useState<Card[]>([])
   const roomCode = useMemo(() => {
     const params = new URLSearchParams(location.search)
     return params.get('code') ?? sessionStorage.getItem(ROOM_CODE_KEY) ?? ''
@@ -65,6 +81,26 @@ const Room = () => {
   const effectiveStatus =
     gameStatus === 'playing' ? 'in_game' : gameStatus === 'finished' ? 'finished' : roomStatus
   const isWaiting = effectiveStatus === 'waiting' || effectiveStatus === 'ready'
+  const formatRank = (rank: number) => {
+    if (rank === 11) return 'J'
+    if (rank === 12) return 'Q'
+    if (rank === 13) return 'K'
+    if (rank === 14) return 'A'
+    if (rank === 15) return '2'
+    return String(rank)
+  }
+  const suitClassMap: Record<Card['suit'], string> = {
+    S: 'spade',
+    C: 'club',
+    D: 'diamond',
+    H: 'heart',
+  }
+  const suitSymbolMap: Record<Card['suit'], string> = {
+    S: '♠',
+    C: '♣',
+    D: '♦',
+    H: '♥',
+  }
   const sendRoomEvent = (type: string, payload: Record<string, unknown>) => {
     const socket = socketRef.current
     if (!socket || socket.readyState !== WebSocket.OPEN) {
@@ -79,6 +115,32 @@ const Room = () => {
     sessionStorage.removeItem(ROOM_PLAYER_KEY)
     window.alert('Room not found.')
     navigate('/lobby', { replace: true })
+  }
+
+  const dealHand = (cards: Card[]) => {
+    dealTimersRef.current.forEach((timer) => window.clearTimeout(timer))
+    dealTimersRef.current = []
+    setHand([])
+    cards.forEach((card, index) => {
+      const timer = window.setTimeout(() => {
+        setHand((prev) => [...prev, card])
+      }, index * 120)
+      dealTimersRef.current.push(timer)
+    })
+  }
+
+  const handleCopyRoomCode = async () => {
+    const code = room?.code ?? roomCode
+    if (!code) {
+      return
+    }
+    try {
+      await navigator.clipboard.writeText(code)
+      window.alert('Copied room code.')
+    } catch (error) {
+      console.warn('Copy failed', error)
+      window.prompt('Copy room code:', code)
+    }
   }
 
   // Start WS sync when we have both roomCode and playerId.
@@ -117,6 +179,10 @@ const Room = () => {
               return
             }
             setRoom(message.payload.room)
+            if (message.payload.room.status === 'waiting') {
+              setGameState(null)
+              setHand([])
+            }
             break
           case 'game:start':
           case 'turn:play':
@@ -124,6 +190,11 @@ const Room = () => {
           case 'game:end':
             if (message.payload?.state) {
               setGameState(message.payload.state)
+            }
+            break
+          case 'hand:deal':
+            if (message.payload?.cards) {
+              dealHand(message.payload.cards as Card[])
             }
             break
           case 'error':
@@ -148,6 +219,19 @@ const Room = () => {
       socket.close()
     }
   }, [roomCode, playerId, navigate])
+
+  useEffect(() => {
+    return () => {
+      dealTimersRef.current.forEach((timer) => window.clearTimeout(timer))
+      dealTimersRef.current = []
+    }
+  }, [])
+
+  useEffect(() => {
+    if (room?.max_games && !maxGamesTouched) {
+      setMaxGames(room.max_games)
+    }
+  }, [room?.max_games, maxGamesTouched])
 
   // Rejoin flow: only when roomCode exists but playerId is missing.
   useEffect(() => {
@@ -246,7 +330,18 @@ const Room = () => {
           {isHost ? (
             <div className="room-menu-section">
               <p className="room-menu-title">Host</p>
-              <button type="button">Start game</button>
+              <button
+                type="button"
+                onClick={() =>
+                  sendRoomEvent('game:start', {
+                    code: roomCode,
+                    player_id: playerId,
+                    max_games: maxGames,
+                  })
+                }
+              >
+                Start game
+              </button>
 
               <button type="button">Close room</button>
             </div>
@@ -272,10 +367,22 @@ const Room = () => {
               <strong>{room?.code ?? roomCode}</strong>
             </div>
             <div className="room-waiting-actions">
-              <button type="button">Copy code</button>
+              <button type="button" onClick={handleCopyRoomCode}>
+                Copy code
+              </button>
 
               {isHost ? (
-                <button type="button" className="primary">
+                <button
+                  type="button"
+                  className="primary"
+                  onClick={() =>
+                    sendRoomEvent('game:start', {
+                      code: roomCode,
+                      player_id: playerId,
+                      max_games: maxGames,
+                    })
+                  }
+                >
                   Start game
                 </button>
               ) : (
@@ -300,6 +407,24 @@ const Room = () => {
             </p>
           </div>
 
+          {isHost ? (
+            <div className="room-config">
+              <label>
+                Number of games
+                <input
+                  type="number"
+                  min={1}
+                  max={99}
+                  value={maxGames}
+                  onChange={(event) => {
+                    setMaxGamesTouched(true)
+                    setMaxGames(Number(event.target.value) || 1)
+                  }}
+                />
+              </label>
+            </div>
+          ) : null}
+
           <div className="room-waiting-list">
             {players.map((player) => (
               <div key={player.id} className="room-waiting-player">
@@ -318,7 +443,9 @@ const Room = () => {
         // Gameplay screen
         <>
           <section className="room-players">
-            {players.map((player) => (
+            {players
+              .filter((player) => player.id !== playerId)
+              .map((player) => (
               <article
                 key={player.id}
                 className={`room-player${player.id === gameState?.current_turn ? ' active' : ''}`}
@@ -327,60 +454,61 @@ const Room = () => {
                   <p className="room-player-name">{player.name}</p>
                   <p className="room-player-chip">{player.score} coins</p>
                 </div>
+                {player.id === gameState?.current_turn ? (
+                  <span className="room-player-turn" aria-label="Current turn">
+                    Turn
+                  </span>
+                ) : null}
               </article>
-            ))}
+              ))}
           </section>
 
           <section className="room-table">
             <div className="room-trick">
-              <div className="room-card">
-                <span className="room-card-corner">
-                  7
-                  <span className="room-card-corner-suit">&clubs;</span>
-                </span>
-                <span className="room-card-center-suit club">&clubs;</span>
-              </div>
-              <div className="room-card">
-                <span className="room-card-corner">
-                  7
-                  <span className="room-card-corner-suit">&hearts;</span>
-                </span>
-                <span className="room-card-center-suit heart">&hearts;</span>
-              </div>
+              {gameState?.last_play?.cards?.length
+                ? gameState.last_play.cards.map((card, index) => {
+                    const suitClass = suitClassMap[card.suit]
+                    const suitSymbol = suitSymbolMap[card.suit]
+                    return (
+                      <div key={`${card.rank}-${card.suit}-${index}`} className="room-card">
+                        <span className="room-card-corner">
+                          {formatRank(card.rank)}
+                          <span className={`room-card-corner-suit ${suitClass}`}>
+                            {suitSymbol}
+                          </span>
+                        </span>
+                        <span className={`room-card-center-suit ${suitClass}`}>{suitSymbol}</span>
+                      </div>
+                    )
+                  })
+                : null}
             </div>
           </section>
 
           <section className="room-hand">
             <div className="room-hand-cards">
-              {[
-                { value: '10', suit: 'spade' },
-                { value: '10', suit: 'diamond' },
-                { value: '9', suit: 'spade' },
-                { value: '8', suit: 'heart' },
-                { value: '8', suit: 'diamond' },
-                { value: '3', suit: 'club' },
-              ].map((card, index) => (
-                <div
-                  key={`${card.value}-${card.suit}`}
-                  className={`room-card small ${index === 3 ? 'selected' : ''}`}
-                >
-                  <span className="room-card-corner">
-                    {card.value}
-                    <span className={`room-card-corner-suit ${card.suit}`}>
-                      {card.suit === 'spade' && <span>&spades;</span>}
-                      {card.suit === 'diamond' && <span>&diams;</span>}
-                      {card.suit === 'heart' && <span>&hearts;</span>}
-                      {card.suit === 'club' && <span>&clubs;</span>}
+              {hand.map((card, index) => {
+                const suitClass = suitClassMap[card.suit]
+                const suitSymbol = suitSymbolMap[card.suit]
+                return (
+                  <div
+                    key={`${card.rank}-${card.suit}-${index}`}
+                    className="room-card small"
+                    style={
+                      {
+                        '--card-index': index,
+                        '--card-count': hand.length,
+                      } as React.CSSProperties
+                    }
+                  >
+                    <span className="room-card-corner">
+                      {formatRank(card.rank)}
+                      <span className={`room-card-corner-suit ${suitClass}`}>{suitSymbol}</span>
                     </span>
-                  </span>
-                  <span className={`room-card-center-suit ${card.suit}`}>
-                    {card.suit === 'spade' && <span>&spades;</span>}
-                    {card.suit === 'diamond' && <span>&diams;</span>}
-                    {card.suit === 'heart' && <span>&hearts;</span>}
-                    {card.suit === 'club' && <span>&clubs;</span>}
-                  </span>
-                </div>
-              ))}
+                    <span className={`room-card-center-suit ${suitClass}`}>{suitSymbol}</span>
+                  </div>
+                )
+              })}
             </div>
             <button className="room-hand-sort" type="button" aria-label="Sort cards">
               ↻
@@ -397,15 +525,16 @@ const Room = () => {
           </section>
 
           <section className="room-current">
-            <p className="room-current-label">Current player</p>
+            <p className="room-current-label">Your player</p>
             <div className="room-current-card">
-              <div>
-                <p className="room-player-name">{activePlayer?.name ?? 'Player'}</p>
-                <p className="room-player-chip">{activePlayer?.score ?? 0} coins</p>
-              </div>
-              <span className="room-current-pill">
-                {activePlayer?.id === playerId ? 'Your turn' : 'Current turn'}
-              </span>
+                <div>
+                    <p className="room-player-name">{currentPlayer?.name ?? 'You'}</p>
+                    <p className="room-player-chip">{currentPlayer?.score ?? 0} coins</p>
+                </div>
+                {currentPlayer?.id === gameState?.current_turn ? (
+                    <span className="room-current-pill">Turn</span>
+                ) : null}
+                <span className="room-current-pill">You</span>
             </div>
           </section>
         </>
