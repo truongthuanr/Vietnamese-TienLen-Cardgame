@@ -84,6 +84,20 @@ const Room = () => {
     navigate('/lobby', { replace: true })
   }
 
+  const handleCopyRoomCode = async () => {
+    const code = room?.code ?? roomCode
+    if (!code) {
+      return
+    }
+    try {
+      await navigator.clipboard.writeText(code)
+      window.alert('Copied room code.')
+    } catch (error) {
+      console.warn('Copy failed', error)
+      window.prompt('Copy room code:', code)
+    }
+  }
+
   // Start WS sync when we have both roomCode and playerId.
   useEffect(() => {
     if (!roomCode || !playerId) {
@@ -295,7 +309,9 @@ const Room = () => {
               <strong>{room?.code ?? roomCode}</strong>
             </div>
             <div className="room-waiting-actions">
-              <button type="button">Copy code</button>
+              <button type="button" onClick={handleCopyRoomCode}>
+                Copy code
+              </button>
 
               {isHost ? (
                 <button
