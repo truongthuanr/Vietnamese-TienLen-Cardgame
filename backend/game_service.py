@@ -9,6 +9,8 @@ from room_service import get_players, get_room, update_player
 from rules import can_beat, evaluate_combo, validate_move
 from schemas import Card, ComboType, GameState, GameStatus, LastPlay, Move, RoomStatus, Suit
 
+CARDS_PER_PLAYER = 13
+
 
 def _serialize_cards(cards: List[Card]) -> str:
     return json.dumps([card.model_dump(mode="json") for card in cards])
@@ -32,6 +34,8 @@ def _deal_hands(players: List[UUID], deck: List[Card]) -> Dict[UUID, List[Card]]
     for card in deck:
         hands[players[index]].append(card)
         index = (index + 1) % len(players)
+        if all(len(hand) >= CARDS_PER_PLAYER for hand in hands.values()):
+            break
     return hands
 
 
@@ -150,6 +154,16 @@ async def play_turn(code: str, player_id: UUID, cards_payload: List[dict]) -> Ga
     if state.status == GameStatus.finished:
         await _apply_end_game_scoring(code)
     return state
+
+# Get the player's current hand of cards
+# This is used to display the player's hand in the UI and to validate their moves.
+async def get_hand(code: str, player_id: UUID) -> List[Card]:
+    code = code.upper()
+    client = await get_redis()
+    raw_hand = await client.hget(room_hands_key(code), str(player_id))
+    if raw_hand is None:
+        raise ValueError("Player hand not found")
+    return _deserialize_cards(raw_hand)
 
 
 async def maybe_start_next_game(code: str) -> Tuple[Optional[GameState], bool]:

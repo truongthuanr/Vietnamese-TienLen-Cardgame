@@ -5,9 +5,9 @@ from uuid import UUID
 from starlette.websockets import WebSocket, WebSocketDisconnect
 
 from events import EventType
-from game_service import get_game_state, maybe_start_next_game, pass_turn, play_turn, start_game
+from game_service import get_game_state, get_hand, maybe_start_next_game, pass_turn, play_turn, start_game
 from room_hub import RoomHub
-from room_service import get_room, remove_player, set_player_ready, set_player_status
+from room_service import get_players, get_room, remove_player, set_player_ready, set_player_status
 
 room_hub = RoomHub()
 
@@ -43,7 +43,7 @@ async def _handle_room_join(websocket: WebSocket, payload: dict, state: Connecti
     if player_id not in {str(p.id) for p in room.players}:
         await _send_error(websocket, "Player not in room")
         return
-    await room_hub.connect(websocket, code)
+    await room_hub.connect(websocket, code, player_id)
     state.current_room = code
     state.current_player = _parse_uuid(player_id)
     await room_hub.broadcast(
@@ -58,6 +58,7 @@ async def _handle_room_join(websocket: WebSocket, payload: dict, state: Connecti
         await websocket.send_json(
             {"type": EventType.game_start.value, "payload": {"state": room_state.model_dump(mode="json")}}
         )
+        await _send_player_hand(websocket, code, state.current_player)
 
 
 @register_event(EventType.room_leave)
@@ -68,7 +69,7 @@ async def _handle_room_leave(websocket: WebSocket, payload: dict, state: Connect
         await _send_error(websocket, "Missing code or player_id")
         return
     updated_room = await remove_player(code, _parse_uuid(player_id))
-    await room_hub.disconnect(websocket, code)
+    await room_hub.disconnect(websocket, code, player_id)
     state.current_room = None
     state.current_player = None
     await room_hub.broadcast(
@@ -107,6 +108,7 @@ async def _handle_room_sync(websocket: WebSocket, payload: dict, state: Connecti
         await websocket.send_json(
             {"type": EventType.game_start.value, "payload": {"state": room_state.model_dump(mode="json")}}
         )
+        await _send_player_hand(websocket, code, _parse_uuid(player_id))
 
 
 @register_event(EventType.player_ready)
@@ -158,6 +160,7 @@ async def _handle_game_start(websocket: WebSocket, payload: dict, state: Connect
         code,
         {"type": EventType.game_start.value, "payload": {"state": room_state.model_dump(mode="json")}},
     )
+    await _broadcast_player_hands(code)
 
 
 @register_event(EventType.turn_play)
@@ -196,6 +199,7 @@ async def _handle_turn_play(websocket: WebSocket, payload: dict, state: Connecti
                 code,
                 {"type": EventType.game_start.value, "payload": {"state": next_state.model_dump(mode="json")}},
             )
+            await _broadcast_player_hands(code)
         elif series_reset:
             updated_room = await get_room(code)
             await room_hub.broadcast(
@@ -257,11 +261,19 @@ async def websocket_endpoint(websocket):
                             },
                         },
                     )
-            await room_hub.disconnect(websocket, state.current_room)
+            await room_hub.disconnect(
+                websocket,
+                state.current_room,
+                str(state.current_player) if state.current_player else None,
+            )
     except Exception as exc:
         await _send_error(websocket, str(exc))
         if state.current_room:
-            await room_hub.disconnect(websocket, state.current_room)
+            await room_hub.disconnect(
+                websocket,
+                state.current_room,
+                str(state.current_player) if state.current_player else None,
+            )
 
 
 def _parse_uuid(value: str) -> UUID:
@@ -270,3 +282,35 @@ def _parse_uuid(value: str) -> UUID:
 
 async def _send_error(websocket, message: str):
     await websocket.send_json({"type": EventType.error.value, "payload": {"message": message}})
+
+
+async def _send_player_hand(websocket: WebSocket, code: str, player_id: UUID | None) -> None:
+    if not player_id:
+        return
+    try:
+        cards = await get_hand(code, player_id)
+    except ValueError:
+        return
+    await websocket.send_json(
+        {
+            "type": EventType.hand_deal.value,
+            "payload": {"cards": [card.model_dump(mode="json") for card in cards]},
+        }
+    )
+
+
+async def _broadcast_player_hands(code: str) -> None:
+    players = await get_players(code)
+    for player in players:
+        try:
+            cards = await get_hand(code, player.id)
+        except ValueError:
+            continue
+        await room_hub.send_to_player(
+            code,
+            str(player.id),
+            {
+                "type": EventType.hand_deal.value,
+                "payload": {"cards": [card.model_dump(mode="json") for card in cards]},
+            },
+        )

@@ -394,6 +394,8 @@
   justify-content: center;
   gap: 12px;
   margin-top: 18px;
+  min-height: 120px;
+  align-items: center;
 }
 
 .room-card {
@@ -481,30 +483,12 @@
   position: absolute;
   left: 50%;
   transform-origin: bottom center;
-}
-
-.room-hand-cards .room-card.small:nth-child(1) {
-  transform: translateX(-130px) rotate(-14deg);
-}
-
-.room-hand-cards .room-card.small:nth-child(2) {
-  transform: translateX(-85px) rotate(-8deg);
-}
-
-.room-hand-cards .room-card.small:nth-child(3) {
-  transform: translateX(-40px) rotate(-3deg);
-}
-
-.room-hand-cards .room-card.small:nth-child(4) {
-  transform: translateX(10px) rotate(3deg);
-}
-
-.room-hand-cards .room-card.small:nth-child(5) {
-  transform: translateX(60px) rotate(8deg);
-}
-
-.room-hand-cards .room-card.small:nth-child(6) {
-  transform: translateX(110px) rotate(14deg);
+  --card-spacing: 28px;
+  --card-tilt: 2deg;
+  transform: translateX(
+      calc((var(--card-index) - (var(--card-count) - 1) / 2) * var(--card-spacing))
+    )
+    rotate(calc((var(--card-index) - (var(--card-count) - 1) / 2) * var(--card-tilt)));
 }
 
 .room-hand-sort {

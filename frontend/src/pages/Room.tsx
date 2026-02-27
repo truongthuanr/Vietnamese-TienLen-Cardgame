@@ -30,12 +30,23 @@ type RoomPayload = {
   games_played: number
 }
 
+type Card = {
+  rank: number
+  suit: 'S' | 'C' | 'D' | 'H'
+}
+
+type LastPlay = {
+  type: string
+  cards: Card[]
+  by_player_id: string
+}
+
 type GameStatePayload = {
   room_id: string
   status: 'waiting' | 'playing' | 'finished'
   players_order: string[]
   current_turn: string
-  last_play: unknown
+  last_play: LastPlay | null
   pass_count: number
   winner_id: string | null
   first_game: boolean
@@ -46,11 +57,13 @@ const Room = () => {
   const location = useLocation()
   const navigate = useNavigate()
   const socketRef = useRef<WebSocket | null>(null)
+  const dealTimersRef = useRef<number[]>([])
   const [menuOpen, setMenuOpen] = useState(false)
   const [room, setRoom] = useState<RoomPayload | null>(null)
   const [gameState, setGameState] = useState<GameStatePayload | null>(null)
   const [maxGames, setMaxGames] = useState(12)
   const [maxGamesTouched, setMaxGamesTouched] = useState(false)
+  const [hand, setHand] = useState<Card[]>([])
   const roomCode = useMemo(() => {
     const params = new URLSearchParams(location.search)
     return params.get('code') ?? sessionStorage.getItem(ROOM_CODE_KEY) ?? ''
@@ -68,6 +81,26 @@ const Room = () => {
   const effectiveStatus =
     gameStatus === 'playing' ? 'in_game' : gameStatus === 'finished' ? 'finished' : roomStatus
   const isWaiting = effectiveStatus === 'waiting' || effectiveStatus === 'ready'
+  const formatRank = (rank: number) => {
+    if (rank === 11) return 'J'
+    if (rank === 12) return 'Q'
+    if (rank === 13) return 'K'
+    if (rank === 14) return 'A'
+    if (rank === 15) return '2'
+    return String(rank)
+  }
+  const suitClassMap: Record<Card['suit'], string> = {
+    S: 'spade',
+    C: 'club',
+    D: 'diamond',
+    H: 'heart',
+  }
+  const suitSymbolMap: Record<Card['suit'], string> = {
+    S: '♠',
+    C: '♣',
+    D: '♦',
+    H: '♥',
+  }
   const sendRoomEvent = (type: string, payload: Record<string, unknown>) => {
     const socket = socketRef.current
     if (!socket || socket.readyState !== WebSocket.OPEN) {
@@ -82,6 +115,18 @@ const Room = () => {
     sessionStorage.removeItem(ROOM_PLAYER_KEY)
     window.alert('Room not found.')
     navigate('/lobby', { replace: true })
+  }
+
+  const dealHand = (cards: Card[]) => {
+    dealTimersRef.current.forEach((timer) => window.clearTimeout(timer))
+    dealTimersRef.current = []
+    setHand([])
+    cards.forEach((card, index) => {
+      const timer = window.setTimeout(() => {
+        setHand((prev) => [...prev, card])
+      }, index * 120)
+      dealTimersRef.current.push(timer)
+    })
   }
 
   const handleCopyRoomCode = async () => {
@@ -136,6 +181,7 @@ const Room = () => {
             setRoom(message.payload.room)
             if (message.payload.room.status === 'waiting') {
               setGameState(null)
+              setHand([])
             }
             break
           case 'game:start':
@@ -144,6 +190,11 @@ const Room = () => {
           case 'game:end':
             if (message.payload?.state) {
               setGameState(message.payload.state)
+            }
+            break
+          case 'hand:deal':
+            if (message.payload?.cards) {
+              dealHand(message.payload.cards as Card[])
             }
             break
           case 'error':
@@ -168,6 +219,13 @@ const Room = () => {
       socket.close()
     }
   }, [roomCode, playerId, navigate])
+
+  useEffect(() => {
+    return () => {
+      dealTimersRef.current.forEach((timer) => window.clearTimeout(timer))
+      dealTimersRef.current = []
+    }
+  }, [])
 
   useEffect(() => {
     if (room?.max_games && !maxGamesTouched) {
@@ -407,54 +465,50 @@ const Room = () => {
 
           <section className="room-table">
             <div className="room-trick">
-              <div className="room-card">
-                <span className="room-card-corner">
-                  7
-                  <span className="room-card-corner-suit">&clubs;</span>
-                </span>
-                <span className="room-card-center-suit club">&clubs;</span>
-              </div>
-              <div className="room-card">
-                <span className="room-card-corner">
-                  7
-                  <span className="room-card-corner-suit">&hearts;</span>
-                </span>
-                <span className="room-card-center-suit heart">&hearts;</span>
-              </div>
+              {gameState?.last_play?.cards?.length
+                ? gameState.last_play.cards.map((card, index) => {
+                    const suitClass = suitClassMap[card.suit]
+                    const suitSymbol = suitSymbolMap[card.suit]
+                    return (
+                      <div key={`${card.rank}-${card.suit}-${index}`} className="room-card">
+                        <span className="room-card-corner">
+                          {formatRank(card.rank)}
+                          <span className={`room-card-corner-suit ${suitClass}`}>
+                            {suitSymbol}
+                          </span>
+                        </span>
+                        <span className={`room-card-center-suit ${suitClass}`}>{suitSymbol}</span>
+                      </div>
+                    )
+                  })
+                : null}
             </div>
           </section>
 
           <section className="room-hand">
             <div className="room-hand-cards">
-              {[
-                { value: '10', suit: 'spade' },
-                { value: '10', suit: 'diamond' },
-                { value: '9', suit: 'spade' },
-                { value: '8', suit: 'heart' },
-                { value: '8', suit: 'diamond' },
-                { value: '3', suit: 'club' },
-              ].map((card, index) => (
-                <div
-                  key={`${card.value}-${card.suit}`}
-                  className={`room-card small ${index === 3 ? 'selected' : ''}`}
-                >
-                  <span className="room-card-corner">
-                    {card.value}
-                    <span className={`room-card-corner-suit ${card.suit}`}>
-                      {card.suit === 'spade' && <span>&spades;</span>}
-                      {card.suit === 'diamond' && <span>&diams;</span>}
-                      {card.suit === 'heart' && <span>&hearts;</span>}
-                      {card.suit === 'club' && <span>&clubs;</span>}
+              {hand.map((card, index) => {
+                const suitClass = suitClassMap[card.suit]
+                const suitSymbol = suitSymbolMap[card.suit]
+                return (
+                  <div
+                    key={`${card.rank}-${card.suit}-${index}`}
+                    className="room-card small"
+                    style={
+                      {
+                        '--card-index': index,
+                        '--card-count': hand.length,
+                      } as React.CSSProperties
+                    }
+                  >
+                    <span className="room-card-corner">
+                      {formatRank(card.rank)}
+                      <span className={`room-card-corner-suit ${suitClass}`}>{suitSymbol}</span>
                     </span>
-                  </span>
-                  <span className={`room-card-center-suit ${card.suit}`}>
-                    {card.suit === 'spade' && <span>&spades;</span>}
-                    {card.suit === 'diamond' && <span>&diams;</span>}
-                    {card.suit === 'heart' && <span>&hearts;</span>}
-                    {card.suit === 'club' && <span>&clubs;</span>}
-                  </span>
-                </div>
-              ))}
+                    <span className={`room-card-center-suit ${suitClass}`}>{suitSymbol}</span>
+                  </div>
+                )
+              })}
             </div>
             <button className="room-hand-sort" type="button" aria-label="Sort cards">
               ↻
