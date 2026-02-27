@@ -385,7 +385,9 @@ const Room = () => {
         // Gameplay screen
         <>
           <section className="room-players">
-            {players.map((player) => (
+            {players
+              .filter((player) => player.id !== playerId)
+              .map((player) => (
               <article
                 key={player.id}
                 className={`room-player${player.id === gameState?.current_turn ? ' active' : ''}`}
@@ -394,8 +396,13 @@ const Room = () => {
                   <p className="room-player-name">{player.name}</p>
                   <p className="room-player-chip">{player.score} coins</p>
                 </div>
+                {player.id === gameState?.current_turn ? (
+                  <span className="room-player-turn" aria-label="Current turn">
+                    Turn
+                  </span>
+                ) : null}
               </article>
-            ))}
+              ))}
           </section>
 
           <section className="room-table">
@@ -464,15 +471,16 @@ const Room = () => {
           </section>
 
           <section className="room-current">
-            <p className="room-current-label">Current player</p>
+            <p className="room-current-label">Your player</p>
             <div className="room-current-card">
-              <div>
-                <p className="room-player-name">{activePlayer?.name ?? 'Player'}</p>
-                <p className="room-player-chip">{activePlayer?.score ?? 0} coins</p>
-              </div>
-              <span className="room-current-pill">
-                {activePlayer?.id === playerId ? 'Your turn' : 'Current turn'}
-              </span>
+                <div>
+                    <p className="room-player-name">{currentPlayer?.name ?? 'You'}</p>
+                    <p className="room-player-chip">{currentPlayer?.score ?? 0} coins</p>
+                </div>
+                {currentPlayer?.id === gameState?.current_turn ? (
+                    <span className="room-current-pill">Turn</span>
+                ) : null}
+                <span className="room-current-pill">You</span>
             </div>
           </section>
         </>
