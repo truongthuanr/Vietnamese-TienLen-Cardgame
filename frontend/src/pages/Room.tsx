@@ -58,7 +58,9 @@ const Room = () => {
   const navigate = useNavigate()
   const socketRef = useRef<WebSocket | null>(null)
   const dealTimersRef = useRef<number[]>([])
+  const toastTimerRef = useRef<number | null>(null)
   const [menuOpen, setMenuOpen] = useState(false)
+  const [toast, setToast] = useState<string | null>(null)
   const [room, setRoom] = useState<RoomPayload | null>(null)
   const [gameState, setGameState] = useState<GameStatePayload | null>(null)
   const [maxGames, setMaxGames] = useState(12)
@@ -136,12 +138,27 @@ const Room = () => {
     }
     try {
       await navigator.clipboard.writeText(code)
-      window.alert('Copied room code.')
+      setToast('Copied room code')
+      if (toastTimerRef.current) {
+        window.clearTimeout(toastTimerRef.current)
+      }
+      toastTimerRef.current = window.setTimeout(() => {
+        setToast(null)
+        toastTimerRef.current = null
+      }, 2500)
     } catch (error) {
       console.warn('Copy failed', error)
       window.prompt('Copy room code:', code)
     }
   }
+
+  useEffect(() => {
+    return () => {
+      if (toastTimerRef.current) {
+        window.clearTimeout(toastTimerRef.current)
+      }
+    }
+  }, [])
 
   // Start WS sync when we have both roomCode and playerId.
   useEffect(() => {
@@ -295,6 +312,11 @@ const Room = () => {
         <span className="sparkle s5" />
         <span className="sparkle s6" />
       </div>
+      {toast ? (
+        <div className="room-toast" role="status" aria-live="polite">
+          {toast}
+        </div>
+      ) : null}
 
       <header className="room-header">
         <p className="room-title">TIEN LEN</p>

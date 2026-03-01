@@ -8,6 +8,23 @@
   padding: clamp(16px, 4vh, 40px) 0;
 }
 
+.room-toast {
+  position: fixed;
+  top: 18px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 6;
+  padding: 10px 16px;
+  border-radius: 999px;
+  border: 2px solid rgba(240, 196, 106, 0.7);
+  background: rgba(35, 11, 8, 0.9);
+  color: #f7dfaa;
+  font-size: 0.85rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  box-shadow: 0 12px 22px rgba(10, 2, 0, 0.5);
+}
+
 .room-header {
   position: relative;
   z-index: 2;
@@ -567,6 +584,10 @@
   .app.room-shell {
     padding: 16px 0;
     gap: 16px;
+  }
+
+  .room-toast {
+    top: 10px;
   }
 
   .room-menu-toggle {
