@@ -1,10 +1,11 @@
-.room-shell {
+.app.room-shell {
   width: min(900px, 94vw);
   align-items: center;
   text-align: center;
-  gap: 26px;
-  padding-top: 48px;
-  padding-bottom: 72px;
+  gap: clamp(16px, 3vh, 26px);
+  min-height: 100svh;
+  justify-content: center;
+  padding: clamp(16px, 4vh, 40px) 0;
 }
 
 .room-header {
@@ -559,6 +560,59 @@
 @media (max-width: 720px) {
   .room-players {
     grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+@media (max-height: 760px) {
+  .app.room-shell {
+    padding: 16px 0;
+    gap: 16px;
+  }
+
+  .room-menu-toggle {
+    top: 16px;
+    right: 16px;
+  }
+
+  .room-table {
+    padding: 16px 14px;
+  }
+
+  .room-trick {
+    min-height: 96px;
+    margin-top: 12px;
+  }
+
+  .room-card {
+    width: 72px;
+    height: 104px;
+    font-size: 1.2rem;
+  }
+
+  .room-card.small {
+    width: 56px;
+    height: 84px;
+    font-size: 1rem;
+  }
+
+  .room-hand-cards {
+    height: 120px;
+  }
+
+  .room-hand-cards .room-card.small {
+    --card-spacing: 22px;
+  }
+
+  .room-players {
+    gap: 8px;
+  }
+
+  .room-player {
+    padding: 8px 10px;
+  }
+
+  .room-actions {
+    gap: 12px;
   }
 }
 

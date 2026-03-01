@@ -2,12 +2,14 @@
   gap: 28px;
 }
 
-.home-create {
+.app.home-create {
   width: min(820px, 92vw);
   align-items: center;
   text-align: center;
-  gap: 36px;
-  padding-top: 56px;
+  gap: clamp(20px, 4vh, 36px);
+  min-height: 100svh;
+  justify-content: center;
+  padding: clamp(20px, 5vh, 48px) 0;
 }
 
 .home-create-header {
@@ -221,8 +223,8 @@
 }
 
 @media (max-width: 640px) {
-  .home-create {
-    padding-top: 40px;
+  .app.home-create {
+    padding: 24px 0;
   }
 }
 
