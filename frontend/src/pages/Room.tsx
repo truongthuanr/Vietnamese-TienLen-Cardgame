@@ -66,6 +66,7 @@ const Room = () => {
   const [maxGames, setMaxGames] = useState(12)
   const [maxGamesTouched, setMaxGamesTouched] = useState(false)
   const [hand, setHand] = useState<Card[]>([])
+  const [sortMode, setSortMode] = useState<'rank' | 'combo'>('rank')
   const roomCode = useMemo(() => {
     const params = new URLSearchParams(location.search)
     return params.get('code') ?? sessionStorage.getItem(ROOM_CODE_KEY) ?? ''
@@ -103,6 +104,46 @@ const Room = () => {
     D: '♦',
     H: '♥',
   }
+  const suitOrder: Record<Card['suit'], number> = {
+    S: 0,
+    C: 1,
+    D: 2,
+    H: 3,
+  }
+  const sortByRank = (cards: Card[]) =>
+    [...cards].sort((a, b) => {
+      if (a.rank !== b.rank) {
+        return a.rank - b.rank
+      }
+      return suitOrder[a.suit] - suitOrder[b.suit]
+    })
+  const sortedHand = useMemo(() => {
+    if (sortMode === 'rank') {
+      return sortByRank(hand)
+    }
+    const groups = new Map<number, Card[]>()
+    hand.forEach((card) => {
+      const existing = groups.get(card.rank)
+      if (existing) {
+        existing.push(card)
+      } else {
+        groups.set(card.rank, [card])
+      }
+    })
+    const combos: Card[] = []
+    const singles: Card[] = []
+    const ranks = Array.from(groups.keys()).sort((a, b) => a - b)
+    ranks.forEach((rank) => {
+      const cards = groups.get(rank) ?? []
+      const sortedCards = sortByRank(cards)
+      if (sortedCards.length > 1) {
+        combos.push(...sortedCards)
+      } else {
+        singles.push(...sortedCards)
+      }
+    })
+    return [...combos, ...singles]
+  }, [hand, sortMode])
   const sendRoomEvent = (type: string, payload: Record<string, unknown>) => {
     const socket = socketRef.current
     if (!socket || socket.readyState !== WebSocket.OPEN) {
@@ -509,7 +550,7 @@ const Room = () => {
 
           <section className="room-hand">
             <div className="room-hand-cards">
-              {hand.map((card, index) => {
+              {sortedHand.map((card, index) => {
                 const suitClass = suitClassMap[card.suit]
                 const suitSymbol = suitSymbolMap[card.suit]
                 return (
@@ -519,7 +560,7 @@ const Room = () => {
                     style={
                       {
                         '--card-index': index,
-                        '--card-count': hand.length,
+                        '--card-count': sortedHand.length,
                       } as React.CSSProperties
                     }
                   >
@@ -532,7 +573,15 @@ const Room = () => {
                 )
               })}
             </div>
-            <button className="room-hand-sort" type="button" aria-label="Sort cards">
+            <button
+              className="room-hand-sort"
+              type="button"
+              aria-label={`Sort cards: ${sortMode === 'rank' ? 'small to large' : 'combo'}`}
+              title={sortMode === 'rank' ? 'Sort: small to large' : 'Sort: combos & singles'}
+              onClick={() =>
+                setSortMode((prev) => (prev === 'rank' ? 'combo' : 'rank'))
+              }
+            >
               ↻
             </button>
           </section>
