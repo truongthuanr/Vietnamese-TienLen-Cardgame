@@ -595,7 +595,7 @@ const Room = () => {
             </button>
           </section>
 
-          <section className="room-current">
+          <section className={`room-current${currentPlayer?.id === gameState?.current_turn ? ' active' : ''}`}>
             <p className="room-current-label">Your player</p>
             <div className="room-current-card">
                 <div>
