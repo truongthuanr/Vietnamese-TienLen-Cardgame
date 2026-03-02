@@ -1,10 +1,28 @@
-.room-shell {
+.app.room-shell {
   width: min(900px, 94vw);
   align-items: center;
   text-align: center;
-  gap: 26px;
-  padding-top: 48px;
-  padding-bottom: 72px;
+  gap: clamp(16px, 3vh, 26px);
+  min-height: 100svh;
+  justify-content: center;
+  padding: clamp(16px, 4vh, 40px) 0;
+}
+
+.room-toast {
+  position: fixed;
+  top: 18px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 6;
+  padding: 10px 16px;
+  border-radius: 999px;
+  border: 2px solid rgba(240, 196, 106, 0.7);
+  background: rgba(35, 11, 8, 0.9);
+  color: #f7dfaa;
+  font-size: 0.85rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  box-shadow: 0 12px 22px rgba(10, 2, 0, 0.5);
 }
 
 .room-header {
@@ -562,6 +580,63 @@
   }
 }
 
+@media (max-height: 760px) {
+  .app.room-shell {
+    padding: 16px 0;
+    gap: 16px;
+  }
+
+  .room-toast {
+    top: 10px;
+  }
+
+  .room-menu-toggle {
+    top: 16px;
+    right: 16px;
+  }
+
+  .room-table {
+    padding: 16px 14px;
+  }
+
+  .room-trick {
+    min-height: 96px;
+    margin-top: 12px;
+  }
+
+  .room-card {
+    width: 72px;
+    height: 104px;
+    font-size: 1.2rem;
+  }
+
+  .room-card.small {
+    width: 56px;
+    height: 84px;
+    font-size: 1rem;
+  }
+
+  .room-hand-cards {
+    height: 120px;
+  }
+
+  .room-hand-cards .room-card.small {
+    --card-spacing: 22px;
+  }
+
+  .room-players {
+    gap: 8px;
+  }
+
+  .room-player {
+    padding: 8px 10px;
+  }
+
+  .room-actions {
+    gap: 12px;
+  }
+}
+
 .room-current {
   width: min(420px, 90vw);
   display: grid;
@@ -587,6 +662,11 @@
   background: rgba(51, 14, 10, 0.75);
   border: 2px solid rgba(240, 196, 106, 0.6);
   box-shadow: 0 18px 30px rgba(15, 4, 0, 0.45);
+}
+
+.room-current.active .room-current-card {
+  border-color: #f0c46a;
+  box-shadow: 0 0 0 2px rgba(240, 196, 106, 0.45), 0 18px 30px rgba(15, 4, 0, 0.55);
 }
 
 .room-current-pill {

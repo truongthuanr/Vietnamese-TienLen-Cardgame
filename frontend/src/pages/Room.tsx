@@ -58,12 +58,15 @@ const Room = () => {
   const navigate = useNavigate()
   const socketRef = useRef<WebSocket | null>(null)
   const dealTimersRef = useRef<number[]>([])
+  const toastTimerRef = useRef<number | null>(null)
   const [menuOpen, setMenuOpen] = useState(false)
+  const [toast, setToast] = useState<string | null>(null)
   const [room, setRoom] = useState<RoomPayload | null>(null)
   const [gameState, setGameState] = useState<GameStatePayload | null>(null)
   const [maxGames, setMaxGames] = useState(12)
   const [maxGamesTouched, setMaxGamesTouched] = useState(false)
   const [hand, setHand] = useState<Card[]>([])
+  const [sortMode, setSortMode] = useState<'rank' | 'combo'>('rank')
   const roomCode = useMemo(() => {
     const params = new URLSearchParams(location.search)
     return params.get('code') ?? sessionStorage.getItem(ROOM_CODE_KEY) ?? ''
@@ -101,6 +104,46 @@ const Room = () => {
     D: '♦',
     H: '♥',
   }
+  const suitOrder: Record<Card['suit'], number> = {
+    S: 0,
+    C: 1,
+    D: 2,
+    H: 3,
+  }
+  const sortByRank = (cards: Card[]) =>
+    [...cards].sort((a, b) => {
+      if (a.rank !== b.rank) {
+        return a.rank - b.rank
+      }
+      return suitOrder[a.suit] - suitOrder[b.suit]
+    })
+  const sortedHand = useMemo(() => {
+    if (sortMode === 'rank') {
+      return sortByRank(hand)
+    }
+    const groups = new Map<number, Card[]>()
+    hand.forEach((card) => {
+      const existing = groups.get(card.rank)
+      if (existing) {
+        existing.push(card)
+      } else {
+        groups.set(card.rank, [card])
+      }
+    })
+    const combos: Card[] = []
+    const singles: Card[] = []
+    const ranks = Array.from(groups.keys()).sort((a, b) => a - b)
+    ranks.forEach((rank) => {
+      const cards = groups.get(rank) ?? []
+      const sortedCards = sortByRank(cards)
+      if (sortedCards.length > 1) {
+        combos.push(...sortedCards)
+      } else {
+        singles.push(...sortedCards)
+      }
+    })
+    return [...combos, ...singles]
+  }, [hand, sortMode])
   const sendRoomEvent = (type: string, payload: Record<string, unknown>) => {
     const socket = socketRef.current
     if (!socket || socket.readyState !== WebSocket.OPEN) {
@@ -136,12 +179,27 @@ const Room = () => {
     }
     try {
       await navigator.clipboard.writeText(code)
-      window.alert('Copied room code.')
+      setToast('Copied room code')
+      if (toastTimerRef.current) {
+        window.clearTimeout(toastTimerRef.current)
+      }
+      toastTimerRef.current = window.setTimeout(() => {
+        setToast(null)
+        toastTimerRef.current = null
+      }, 2500)
     } catch (error) {
       console.warn('Copy failed', error)
       window.prompt('Copy room code:', code)
     }
   }
+
+  useEffect(() => {
+    return () => {
+      if (toastTimerRef.current) {
+        window.clearTimeout(toastTimerRef.current)
+      }
+    }
+  }, [])
 
   // Start WS sync when we have both roomCode and playerId.
   useEffect(() => {
@@ -295,6 +353,11 @@ const Room = () => {
         <span className="sparkle s5" />
         <span className="sparkle s6" />
       </div>
+      {toast ? (
+        <div className="room-toast" role="status" aria-live="polite">
+          {toast}
+        </div>
+      ) : null}
 
       <header className="room-header">
         <p className="room-title">TIEN LEN</p>
@@ -487,7 +550,7 @@ const Room = () => {
 
           <section className="room-hand">
             <div className="room-hand-cards">
-              {hand.map((card, index) => {
+              {sortedHand.map((card, index) => {
                 const suitClass = suitClassMap[card.suit]
                 const suitSymbol = suitSymbolMap[card.suit]
                 return (
@@ -497,7 +560,7 @@ const Room = () => {
                     style={
                       {
                         '--card-index': index,
-                        '--card-count': hand.length,
+                        '--card-count': sortedHand.length,
                       } as React.CSSProperties
                     }
                   >
@@ -510,7 +573,15 @@ const Room = () => {
                 )
               })}
             </div>
-            <button className="room-hand-sort" type="button" aria-label="Sort cards">
+            <button
+              className="room-hand-sort"
+              type="button"
+              aria-label={`Sort cards: ${sortMode === 'rank' ? 'small to large' : 'combo'}`}
+              title={sortMode === 'rank' ? 'Sort: small to large' : 'Sort: combos & singles'}
+              onClick={() =>
+                setSortMode((prev) => (prev === 'rank' ? 'combo' : 'rank'))
+              }
+            >
               ↻
             </button>
           </section>
@@ -524,7 +595,7 @@ const Room = () => {
             </button>
           </section>
 
-          <section className="room-current">
+          <section className={`room-current${currentPlayer?.id === gameState?.current_turn ? ' active' : ''}`}>
             <p className="room-current-label">Your player</p>
             <div className="room-current-card">
                 <div>
