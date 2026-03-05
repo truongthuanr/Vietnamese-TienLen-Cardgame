@@ -51,6 +51,7 @@ type GameStatePayload = {
   winner_id: string | null
   first_game: boolean
   first_turn_required: boolean
+  first_turn_card?: Card | null
 }
 
 const Room = () => {
@@ -66,6 +67,7 @@ const Room = () => {
   const [maxGames, setMaxGames] = useState(12)
   const [maxGamesTouched, setMaxGamesTouched] = useState(false)
   const [hand, setHand] = useState<Card[]>([])
+  const [selectedCards, setSelectedCards] = useState<Card[]>([])
   const [sortMode, setSortMode] = useState<'rank' | 'combo'>('rank')
   const roomCode = useMemo(() => {
     const params = new URLSearchParams(location.search)
@@ -110,6 +112,7 @@ const Room = () => {
     D: 2,
     H: 3,
   }
+  const cardKey = (card: Card) => `${card.rank}-${card.suit}`
   const sortByRank = (cards: Card[]) =>
     [...cards].sort((a, b) => {
       if (a.rank !== b.rank) {
@@ -144,6 +147,21 @@ const Room = () => {
     })
     return [...combos, ...singles]
   }, [hand, sortMode])
+  const selectedSet = useMemo(
+    () => new Set(selectedCards.map((card) => cardKey(card))),
+    [selectedCards],
+  )
+  const isMyTurn = gameState?.current_turn === playerId && gameState?.status === 'playing'
+  const smallestCard = hand.length ? sortByRank(hand)[0] : null
+  const requiresSmallest =
+    Boolean(gameState?.first_turn_required) && gameState?.current_turn === playerId
+  const hasRequiredFirstCard = !requiresSmallest
+    ? true
+    : smallestCard
+      ? selectedSet.has(cardKey(smallestCard))
+      : false
+  const canPlay = isMyTurn && selectedCards.length > 0 && hasRequiredFirstCard
+  const canPass = isMyTurn && Boolean(gameState?.last_play)
   const sendRoomEvent = (type: string, payload: Record<string, unknown>) => {
     const socket = socketRef.current
     if (!socket || socket.readyState !== WebSocket.OPEN) {
@@ -164,6 +182,7 @@ const Room = () => {
     dealTimersRef.current.forEach((timer) => window.clearTimeout(timer))
     dealTimersRef.current = []
     setHand([])
+    setSelectedCards([])
     cards.forEach((card, index) => {
       const timer = window.setTimeout(() => {
         setHand((prev) => [...prev, card])
@@ -248,6 +267,25 @@ const Room = () => {
           case 'game:end':
             if (message.payload?.state) {
               setGameState(message.payload.state)
+              if (
+                message.type === 'turn:play' &&
+                message.payload.state.last_play?.by_player_id === playerId
+              ) {
+                const played = message.payload.state.last_play.cards as Card[]
+                setHand((prev) => {
+                  const remaining = [...prev]
+                  played.forEach((card) => {
+                    const index = remaining.findIndex(
+                      (item) => item.rank === card.rank && item.suit === card.suit,
+                    )
+                    if (index >= 0) {
+                      remaining.splice(index, 1)
+                    }
+                  })
+                  return remaining
+                })
+                setSelectedCards([])
+              }
             }
             break
           case 'hand:deal':
@@ -284,6 +322,12 @@ const Room = () => {
       dealTimersRef.current = []
     }
   }, [])
+
+  useEffect(() => {
+    if (!isMyTurn) {
+      setSelectedCards([])
+    }
+  }, [isMyTurn])
 
   useEffect(() => {
     if (room?.max_games && !maxGamesTouched) {
@@ -553,16 +597,34 @@ const Room = () => {
               {sortedHand.map((card, index) => {
                 const suitClass = suitClassMap[card.suit]
                 const suitSymbol = suitSymbolMap[card.suit]
+                const isSelected = selectedSet.has(cardKey(card))
                 return (
                   <div
                     key={`${card.rank}-${card.suit}-${index}`}
-                    className="room-card small"
+                    className={`room-card small${isSelected ? ' selected' : ''}`}
                     style={
                       {
                         '--card-index': index,
                         '--card-count': sortedHand.length,
                       } as React.CSSProperties
                     }
+                    onClick={() => {
+                      if (!isMyTurn) {
+                        return
+                      }
+                      setSelectedCards((prev) => {
+                        const next = [...prev]
+                        const existingIndex = next.findIndex(
+                          (item) => item.rank === card.rank && item.suit === card.suit,
+                        )
+                        if (existingIndex >= 0) {
+                          next.splice(existingIndex, 1)
+                          return next
+                        }
+                        next.push(card)
+                        return next
+                      })
+                    }}
                   >
                     <span className="room-card-corner">
                       {formatRank(card.rank)}
@@ -587,10 +649,34 @@ const Room = () => {
           </section>
 
           <section className="room-actions">
-            <button className="room-action ghost" type="button">
+            <button
+              className="room-action ghost"
+              type="button"
+              disabled={!canPass}
+              onClick={() => {
+                if (!canPass) {
+                  return
+                }
+                sendRoomEvent('turn:pass', { code: roomCode, player_id: playerId })
+              }}
+            >
               BO LUOT
             </button>
-            <button className="room-action primary" type="button">
+            <button
+              className="room-action primary"
+              type="button"
+              disabled={!canPlay}
+              onClick={() => {
+                if (!canPlay) {
+                  return
+                }
+                sendRoomEvent('turn:play', {
+                  code: roomCode,
+                  player_id: playerId,
+                  cards: selectedCards,
+                })
+              }}
+            >
               DANH
             </button>
           </section>

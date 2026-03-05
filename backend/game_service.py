@@ -6,7 +6,7 @@ from uuid import UUID
 
 from redis_store import ROOM_TTL_SECONDS, get_redis, room_hands_key, room_meta_key, room_state_key
 from room_service import get_players, get_room, update_player
-from rules import can_beat, evaluate_combo, validate_move
+from rules import SUIT_ORDER, can_beat, evaluate_combo, validate_move
 from schemas import Card, ComboType, GameState, GameStatus, LastPlay, Move, RoomStatus, Suit
 
 CARDS_PER_PLAYER = 13
@@ -39,11 +39,23 @@ def _deal_hands(players: List[UUID], deck: List[Card]) -> Dict[UUID, List[Card]]
     return hands
 
 
-def _find_start_player(hands: Dict[UUID, List[Card]]) -> UUID:
+def _card_sort_key(card: Card) -> tuple[int, int]:
+    return (card.rank, SUIT_ORDER[card.suit])
+
+
+def _find_start_player(hands: Dict[UUID, List[Card]]) -> tuple[UUID, Optional[Card]]:
+    lowest_player: Optional[UUID] = None
+    lowest_card: Optional[Card] = None
     for player_id, cards in hands.items():
-        if any(card.rank == 3 and card.suit == Suit.spades for card in cards):
-            return player_id
-    return next(iter(hands))
+        if not cards:
+            continue
+        player_lowest = min(cards, key=_card_sort_key)
+        if lowest_card is None or _card_sort_key(player_lowest) < _card_sort_key(lowest_card):
+            lowest_player = player_id
+            lowest_card = player_lowest
+    if lowest_player is None:
+        return next(iter(hands)), None
+    return lowest_player, lowest_card
 
 
 def _next_player(players: List[UUID], current: UUID) -> UUID:
@@ -68,7 +80,7 @@ async def start_game(code: str, max_games: Optional[int] = None) -> GameState:
     deck = _create_deck()
     random.shuffle(deck)
     hands = _deal_hands(players_order, deck)
-    current_turn = _find_start_player(hands)
+    current_turn, first_turn_card = _find_start_player(hands)
 
     first_game = room.games_played == 0
     state = GameState(
@@ -81,7 +93,8 @@ async def start_game(code: str, max_games: Optional[int] = None) -> GameState:
         pass_count=0,
         winner_id=None,
         first_game=first_game,
-        first_turn_required=first_game,
+        first_turn_required=True,
+        first_turn_card=first_turn_card,
     )
 
     client = await get_redis()
@@ -128,9 +141,17 @@ async def play_turn(code: str, player_id: UUID, cards_payload: List[dict]) -> Ga
         raise ValueError("Cards not in hand")
 
     if state.first_turn_required:
-        has_three_spades = any(card.rank == 3 and card.suit == Suit.spades for card in cards)
-        if not has_three_spades:
-            raise ValueError("First play must include 3 of spades")
+        if state.first_turn_card:
+            required_card = state.first_turn_card
+            has_required = any(
+                card.rank == required_card.rank and card.suit == required_card.suit for card in cards
+            )
+            if not has_required:
+                raise ValueError("First play must include the smallest card")
+        else:
+            has_three_spades = any(card.rank == 3 and card.suit == Suit.spades for card in cards)
+            if not has_three_spades:
+                raise ValueError("First play must include 3 of spades")
 
     move = Move(type="play", cards=cards, by_player_id=player_id, ts=datetime.utcnow())
     last_play = validate_move(move, state.last_play)

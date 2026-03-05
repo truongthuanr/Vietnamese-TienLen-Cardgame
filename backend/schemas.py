@@ -96,3 +96,4 @@ class GameState(BaseModel):
     winner_id: Optional[UUID] = None
     first_game: bool = False
     first_turn_required: bool = False
+    first_turn_card: Optional[Card] = None

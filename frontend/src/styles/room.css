@@ -460,11 +460,12 @@
   width: 64px;
   height: 96px;
   font-size: 1.2rem;
+  --card-lift: 0px;
   transform: translateY(6px);
 }
 
 .room-card.selected {
-  transform: translateY(-8px);
+  --card-lift: -14px;
   box-shadow: 0 18px 26px rgba(10, 2, 0, 0.5), 0 0 0 2px rgba(240, 196, 106, 0.6);
 }
 
@@ -500,12 +501,14 @@
 .room-hand-cards .room-card.small {
   position: absolute;
   left: 50%;
+  cursor: pointer;
   transform-origin: bottom center;
   --card-spacing: 28px;
   --card-tilt: 2deg;
   transform: translateX(
       calc((var(--card-index) - (var(--card-count) - 1) / 2) * var(--card-spacing))
     )
+    translateY(var(--card-lift))
     rotate(calc((var(--card-index) - (var(--card-count) - 1) / 2) * var(--card-tilt)));
 }
 
@@ -572,6 +575,13 @@
 .room-action:hover {
   transform: translateY(-2px);
   box-shadow: 0 20px 30px rgba(15, 4, 0, 0.6);
+}
+
+.room-action:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+  box-shadow: none;
+  transform: none;
 }
 
 @media (max-width: 720px) {
