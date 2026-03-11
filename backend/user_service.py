@@ -1,4 +1,5 @@
 import json
+import logging
 from datetime import datetime
 from typing import Optional
 from uuid import UUID, uuid4
@@ -8,6 +9,8 @@ from starlette.requests import Request
 from starlette.responses import JSONResponse
 
 from redis_store import USER_TTL_SECONDS, get_redis, user_key
+
+logger = logging.getLogger("tienlen.user_service")
 
 
 class User(BaseModel):
@@ -45,12 +48,14 @@ async def create_user(request: Request):
     try:
         payload = CreateUserRequest.model_validate(await request.json())
     except ValidationError as exc:
+        logger.warning("create_user validation_error=%s", exc.errors())
         return JSONResponse({"error": exc.errors()}, status_code=400)
 
     now = datetime.utcnow()
     user = User(id=uuid4(), name=payload.name, created_at=now, last_joined_at=now)
     client = await get_redis()
     await client.set(user_key(str(user.id)), json.dumps(user.model_dump(mode="json")), ex=USER_TTL_SECONDS)
+    logger.info("create_user success user_id=%s name=%s", user.id, user.name)
     return JSONResponse({"user": user.model_dump(mode="json")})
 
 
@@ -73,6 +78,7 @@ async def get_user_handler(request: Request):
     user_id = request.path_params["user_id"]
     user = await get_user(user_id)
     if user is None:
+        logger.warning("get_user user_not_found user_id=%s", user_id)
         return JSONResponse({"error": "User not found"}, status_code=404)
     return JSONResponse({"user": user.model_dump(mode="json")})
 

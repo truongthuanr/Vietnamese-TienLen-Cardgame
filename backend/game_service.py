@@ -1,4 +1,5 @@
 import json
+import logging
 import random
 from datetime import datetime
 from typing import Dict, List, Optional, Tuple
@@ -10,6 +11,7 @@ from rules import SUIT_ORDER, can_beat, evaluate_combo, validate_move
 from schemas import Card, ComboType, GameState, GameStatus, LastPlay, Move, RoomStatus, Suit
 
 CARDS_PER_PLAYER = 13
+logger = logging.getLogger("tienlen.game_service")
 
 
 def _serialize_cards(cards: List[Card]) -> str:
@@ -67,9 +69,11 @@ async def start_game(code: str, max_games: Optional[int] = None) -> GameState:
     code = code.upper()
     room = await get_room(code)
     if room is None:
+        logger.warning("start_game room_not_found code=%s", code)
         raise ValueError("Room not found")
     players = await get_players(code)
     if len(players) < 2:
+        logger.warning("start_game not_enough_players code=%s players=%s", code, len(players))
         raise ValueError("Not enough players to start")
 
     if max_games is not None and max_games >= 1:
@@ -115,6 +119,14 @@ async def start_game(code: str, max_games: Optional[int] = None) -> GameState:
         player.hand_count = len(hands[player.id])
         await update_player(code, player)
 
+    logger.info(
+        "start_game success code=%s players=%s current_turn=%s game_index=%s max_games=%s",
+        code,
+        len(players_order),
+        current_turn,
+        room.games_played,
+        room.max_games,
+    )
     return state
 
 
@@ -123,21 +135,31 @@ async def play_turn(code: str, player_id: UUID, cards_payload: List[dict]) -> Ga
     client = await get_redis()
     raw_state = await client.get(room_state_key(code))
     if raw_state is None:
+        logger.warning("play_turn game_not_started code=%s player_id=%s", code, player_id)
         raise ValueError("Game not started")
 
     state = GameState.model_validate(json.loads(raw_state))
     if state.status != GameStatus.playing:
+        logger.warning("play_turn game_finished code=%s player_id=%s", code, player_id)
         raise ValueError("Game already finished")
     if state.current_turn != player_id:
+        logger.warning(
+            "play_turn wrong_turn code=%s player_id=%s expected_player_id=%s",
+            code,
+            player_id,
+            state.current_turn,
+        )
         raise ValueError("Not your turn")
 
     raw_hand = await client.hget(room_hands_key(code), str(player_id))
     if raw_hand is None:
+        logger.warning("play_turn hand_not_found code=%s player_id=%s", code, player_id)
         raise ValueError("Player hand not found")
     hand_cards = _deserialize_cards(raw_hand)
     cards = [Card.model_validate(payload) for payload in cards_payload]
 
     if not _hand_contains(hand_cards, cards):
+        logger.warning("play_turn cards_not_in_hand code=%s player_id=%s", code, player_id)
         raise ValueError("Cards not in hand")
 
     if state.first_turn_required:
@@ -174,6 +196,15 @@ async def play_turn(code: str, player_id: UUID, cards_payload: List[dict]) -> Ga
     await _sync_hand_count(code, player_id, len(remaining_hand))
     if state.status == GameStatus.finished:
         await _apply_end_game_scoring(code)
+        logger.info("play_turn game_finished code=%s winner_id=%s", code, player_id)
+    else:
+        logger.info(
+            "play_turn success code=%s player_id=%s cards_played=%s next_turn=%s",
+            code,
+            player_id,
+            len(cards),
+            state.current_turn,
+        )
     return state
 
 # Get the player's current hand of cards
@@ -191,6 +222,7 @@ async def maybe_start_next_game(code: str) -> Tuple[Optional[GameState], bool]:
     code = code.upper()
     room = await get_room(code)
     if room is None:
+        logger.warning("maybe_start_next_game room_not_found code=%s", code)
         return None, False
     client = await get_redis()
     raw_state = await client.get(room_state_key(code))
@@ -209,8 +241,10 @@ async def maybe_start_next_game(code: str) -> Tuple[Optional[GameState], bool]:
         pipeline.set(room_meta_key(code), json.dumps(room.model_dump(mode="json", exclude={"players"})))
         pipeline.expire(room_meta_key(code), ROOM_TTL_SECONDS)
         await pipeline.execute()
+        logger.info("maybe_start_next_game series_reset code=%s max_games=%s", code, room.max_games)
         return None, True
     next_state = await start_game(code)
+    logger.info("maybe_start_next_game auto_started code=%s game_index=%s", code, room.games_played + 1)
     return next_state, False
 
 
@@ -219,12 +253,20 @@ async def pass_turn(code: str, player_id: UUID) -> GameState:
     client = await get_redis()
     raw_state = await client.get(room_state_key(code))
     if raw_state is None:
+        logger.warning("pass_turn game_not_started code=%s player_id=%s", code, player_id)
         raise ValueError("Game not started")
 
     state = GameState.model_validate(json.loads(raw_state))
     if state.current_turn != player_id:
+        logger.warning(
+            "pass_turn wrong_turn code=%s player_id=%s expected_player_id=%s",
+            code,
+            player_id,
+            state.current_turn,
+        )
         raise ValueError("Not your turn")
     if state.last_play is None:
+        logger.warning("pass_turn no_last_play code=%s player_id=%s", code, player_id)
         raise ValueError("Cannot pass without a last play")
 
     state.pass_count += 1
@@ -236,6 +278,7 @@ async def pass_turn(code: str, player_id: UUID) -> GameState:
         state.current_turn = _next_player(state.players_order, player_id)
 
     await client.set(room_state_key(code), json.dumps(state.model_dump(mode="json")), ex=ROOM_TTL_SECONDS)
+    logger.info("pass_turn success code=%s player_id=%s next_turn=%s", code, player_id, state.current_turn)
     return state
 
 

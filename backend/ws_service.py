@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+import logging
 from typing import Awaitable, Callable, Dict
 from uuid import UUID
 
@@ -10,6 +11,7 @@ from room_hub import RoomHub
 from room_service import get_players, get_room, remove_player, set_player_ready, set_player_status
 
 room_hub = RoomHub()
+logger = logging.getLogger("tienlen.ws_service")
 
 Handler = Callable[[WebSocket, dict, "ConnectionState"], Awaitable[None]]
 _EVENT_HANDLERS: Dict[str, Handler] = {}
@@ -46,6 +48,7 @@ async def _handle_room_join(websocket: WebSocket, payload: dict, state: Connecti
     await room_hub.connect(websocket, code, player_id)
     state.current_room = code
     state.current_player = _parse_uuid(player_id)
+    logger.info("ws_room_join code=%s player_id=%s", code, player_id)
     await room_hub.broadcast(
         code,
         {
@@ -72,6 +75,7 @@ async def _handle_room_leave(websocket: WebSocket, payload: dict, state: Connect
     await room_hub.disconnect(websocket, code, player_id)
     state.current_room = None
     state.current_player = None
+    logger.info("ws_room_leave code=%s player_id=%s", code, player_id)
     await room_hub.broadcast(
         code,
         {
@@ -120,6 +124,7 @@ async def _handle_player_ready(websocket: WebSocket, payload: dict, state: Conne
         await _send_error(websocket, "Missing code or player_id")
         return
     room = await set_player_ready(code, _parse_uuid(player_id), bool(is_ready))
+    logger.info("ws_player_ready code=%s player_id=%s is_ready=%s", code, player_id, bool(is_ready))
     await room_hub.broadcast(
         code,
         {
@@ -156,6 +161,7 @@ async def _handle_game_start(websocket: WebSocket, payload: dict, state: Connect
             await _send_error(websocket, "Invalid max_games")
             return
     room_state = await start_game(code, max_games_value)
+    logger.info("ws_game_start code=%s player_id=%s max_games=%s", code, player_id, max_games_value)
     await room_hub.broadcast(
         code,
         {"type": EventType.game_start.value, "payload": {"state": room_state.model_dump(mode="json")}},
@@ -172,6 +178,7 @@ async def _handle_turn_play(websocket: WebSocket, payload: dict, state: Connecti
         await _send_error(websocket, "Missing code, player_id, or cards")
         return
     room_state = await play_turn(code, _parse_uuid(player_id), cards)
+    logger.info("ws_turn_play code=%s player_id=%s cards=%s", code, player_id, len(cards))
     await room_hub.broadcast(
         code,
         {"type": EventType.turn_play.value, "payload": {"state": room_state.model_dump(mode="json")}},
@@ -223,6 +230,7 @@ async def _handle_turn_pass(websocket: WebSocket, payload: dict, state: Connecti
         await _send_error(websocket, "Missing code or player_id")
         return
     room_state = await pass_turn(code, _parse_uuid(player_id))
+    logger.info("ws_turn_pass code=%s player_id=%s", code, player_id)
     await room_hub.broadcast(
         code,
         {"type": EventType.turn_pass.value, "payload": {"state": room_state.model_dump(mode="json")}},
@@ -231,6 +239,7 @@ async def _handle_turn_pass(websocket: WebSocket, payload: dict, state: Connecti
 
 async def websocket_endpoint(websocket):
     await websocket.accept()
+    logger.info("ws_connected client=%s", websocket.client)
     state = ConnectionState()
     try:
         while True:
@@ -240,10 +249,25 @@ async def websocket_endpoint(websocket):
 
             handler = _EVENT_HANDLERS.get(event_type)
             if not handler:
+                logger.warning("ws_unknown_event event_type=%s", event_type)
                 await _send_error(websocket, "Unknown event type")
                 continue
-            await handler(websocket, payload, state)
+            try:
+                await handler(websocket, payload, state)
+            except ValueError as exc:
+                logger.warning("ws_handler_value_error event_type=%s error=%s", event_type, exc)
+                await _send_error(websocket, str(exc))
+            except Exception as exc:
+                logger.exception(
+                    "ws_handler_exception event_type=%s room=%s player_id=%s",
+                    event_type,
+                    state.current_room,
+                    state.current_player,
+                    exc_info=exc,
+                )
+                await _send_error(websocket, "Internal server error")
     except WebSocketDisconnect:
+        logger.info("ws_disconnected room=%s player_id=%s", state.current_room, state.current_player)
         if state.current_room:
             if state.current_player:
                 updated_room = await set_player_status(
@@ -267,7 +291,13 @@ async def websocket_endpoint(websocket):
                 str(state.current_player) if state.current_player else None,
             )
     except Exception as exc:
-        await _send_error(websocket, str(exc))
+        logger.exception(
+            "ws_connection_exception room=%s player_id=%s",
+            state.current_room,
+            state.current_player,
+            exc_info=exc,
+        )
+        await _send_error(websocket, "Internal server error")
         if state.current_room:
             await room_hub.disconnect(
                 websocket,
@@ -281,6 +311,7 @@ def _parse_uuid(value: str) -> UUID:
 
 
 async def _send_error(websocket, message: str):
+    logger.warning("ws_error message=%s", message)
     await websocket.send_json({"type": EventType.error.value, "payload": {"message": message}})
 
 
